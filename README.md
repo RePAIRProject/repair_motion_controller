@@ -52,7 +52,7 @@ repair_motion_planner/
 │   └── run_xbot2_dummy.py                  # executable
 │
 ├── src/
-│   └── xbot_ros_bridge.cpp                 # executable
+│   └── xbot_ros_bridge.cpp                 # executable (node)
 │
 ├── CMakeLists.txt
 ├── package.xml
