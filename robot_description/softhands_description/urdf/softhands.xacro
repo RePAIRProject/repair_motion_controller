@@ -1,0 +1,124 @@
+<?xml version="1.0"?>
+<!-- 
+ *  Software License Agreement: BSD 3-Clause License
+ *
+ * Copyright (c) 2021, NMMI
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * Redistributions of source code must retain the above copyright notice, this
+ * list of conditions and the following disclaimer.
+ *
+ * Redistributions in binary form must reproduce the above copyright notice,
+ * this list of conditions and the following disclaimer in the documentation
+ * and/or other materials provided with the distribution.
+ *
+ * Neither the name of the copyright holder nor the names of its
+ * contributors may be used to endorse or promote products derived from
+ * this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * \file      test_SHs_v2.urdf.xacro
+ *
+ * \author       Centro di Ricerca "E.Piaggio"
+ * \author       Istituto Italiano di Tecnologia, Soft Robotics for Human Cooperation and Rehabilitation Lab
+ *
+-->
+
+<robot name="softhands" xmlns:xacro="http://www.ros.org/wiki/xacro">
+	
+	<xacro:macro name="softhands" params="version position orientation arm_1_parent arm_2_parent fixed_hands:='false'">
+
+		<xacro:include filename="$(find softhands_description)/urdf/xacro/include/macro/color.xacro" />
+		<xacro:include filename="$(find softhands_description)/urdf/xacro/include/macro/plugin.xacro"/>
+
+		<!-- If you are using only the hand -->
+		<!-- <link name="world"/> -->
+
+		<!-- IF VERSION == 1_2_Research -->
+		<xacro:if value="${version == 'v1_2_research'}">
+			<xacro:include filename="$(find softhands_description)/urdf/xacro/include/macro/v1_2_research/header.xacro"/>
+			<xacro:include filename="$(find softhands_description)/urdf/xacro/v1_2_research.xacro"/>
+			
+			<xacro:v1_2_research 
+				side="left"
+				parent="${arm_1_parent}" 
+				position="${position}"
+				orientation="0 0 ${orientation/2}" 
+				fixed_hands="${fixed_hands}">
+			</xacro:v1_2_research>
+			
+			<xacro:v1_2_research 
+				side="right" 
+				parent="${arm_2_parent}" 
+				position="${position}"
+				orientation="0 0 ${orientation/2}" 
+				fixed_hands="${fixed_hands}">
+			</xacro:v1_2_research>
+			
+		</xacro:if>	
+
+		<!-- IF VERSION == 1_wide -->
+
+		<xacro:if value="${version == 'v1_wide'}">
+			<xacro:include filename="$(find softhands_description)/urdf/xacro/include/macro/v1_wide/header.xacro"/>
+			<xacro:include filename="$(find softhands_description)/urdf/xacro/v1_wide.xacro"/>
+			
+			<xacro:v1_wide 
+				side="left"
+				parent="${arm_1_parent}" 
+				position="${position}"
+				orientation="0 0 ${orientation}" 
+				fixed_hands="${fixed_hands}">
+			</xacro:v1_wide>
+
+			<xacro:v1_wide 
+				side="right" 
+				parent="${arm_2_parent}" 
+				position="${position}"
+				orientation="0 0 ${orientation}" 
+				fixed_hands="${fixed_hands}">
+			</xacro:v1_wide>
+		</xacro:if>	
+
+		<!-- IF VERSION == mixed_hands -->
+
+		<xacro:if value="${version == 'mixed_hands'}">
+			<xacro:include filename="$(find softhands_description)/urdf/xacro/include/macro/v1_wide/header.xacro"/>
+			<xacro:include filename="$(find softhands_description)/urdf/xacro/v1_wide.xacro"/>
+			<xacro:include filename="$(find softhands_description)/urdf/xacro/include/macro/v1_2_research/header.xacro"/>
+			<xacro:include filename="$(find softhands_description)/urdf/xacro/v1_2_research.xacro"/>
+			
+			<xacro:v1_wide 
+				side="left"
+				parent="${arm_1_parent}" 
+				position="${position}"
+				orientation="0 0 ${orientation}" 
+				fixed_hands="${fixed_hands}">
+			</xacro:v1_wide>
+
+			<xacro:v1_2_research 
+				side="right" 
+				parent="${arm_2_parent}" 
+				position="${position}"
+				orientation="0 0 ${orientation/2}" 
+				fixed_hands="${fixed_hands}">
+			</xacro:v1_2_research>
+		</xacro:if>	
+
+
+	</xacro:macro>
+
+</robot>

@@ -1,0 +1,22 @@
+home_joint_config:
+  j_sliding_guide: 0.0
+  j_torso_1: 0.0
+  j_arm_1_1: -0.5
+  j_arm_1_2: -0.5
+  j_arm_1_3: 0.5
+  j_arm_1_4: -1.0
+  j_arm_1_5: -0.5
+  j_arm_1_6: -0.5
+  j_arm_1_7: -1.0
+  j_arm_2_1: 0.5
+  j_arm_2_2: 0.5
+  j_arm_2_3: -0.5
+  j_arm_2_4: 1.0
+  j_arm_2_5: 0.5
+  j_arm_2_6: 0.5
+  j_arm_2_7: 1.0
+
+
+# used in: 
+#        - `scripts/repair_klampt_motion_planner.py`
+#        - 

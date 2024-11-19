@@ -1,0 +1,12 @@
+# Goal definition
+uint8 arm             # 0 for left, 1 for right, 2 for both
+geometry_msgs/Pose pick_pose  # Grasp target pose
+geometry_msgs/Pose place_pose # Release target pose
+
+---
+# Result definition
+bool success           # True if action was successful
+
+---
+# Feedback definition
+float32 progress       # Progress of the task from 0.0 to 1.0
