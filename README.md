@@ -96,7 +96,7 @@ repair_motion_planner/
 - clone this repo and build:
     ```bash
     cd ~/catkin_ws/src
-    git clone ....
+    git clone https://github.com/RePAIRProject/repair_motion_controller.git
     cd ~/catkin_ws
     catkin build
     source devel/setup.bash
