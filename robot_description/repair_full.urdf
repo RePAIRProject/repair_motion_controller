@@ -220,6 +220,8 @@ results of the optimization), otherwise we go with the old ones (generated for a
     <parent link="camera_accel_frame"/>
     <child link="camera_accel_optical_frame"/>
   </joint>
+
+
   <gazebo reference="camera_link">
     <self_collide>0</self_collide>
     <enable_wind>0</enable_wind>
@@ -323,7 +325,11 @@ results of the optimization), otherwise we go with the old ones (generated for a
       <pointCloudCutoffMax>9.0</pointCloudCutoffMax>
     </plugin>
   </gazebo>
-  <joint name="j_sliding_guide" type="prismatic">
+
+
+
+
+  <joint name="j_torso_base" type="prismatic">
     <origin rpy="0 0 0" xyz="0 0 0"/>
     <parent link="sliding_guide_link"/>
     <child link="dummy_prismatic_link"/>
@@ -577,7 +583,8 @@ results of the optimization), otherwise we go with the old ones (generated for a
   <joint name="j_arm_2_7" type="revolute">
     <parent link="arm_2_6"/>
     <child link="arm_2_7"/>
-    <origin rpy="-1.570796326795 0.3316123 0.0" xyz="0.0 0.062877 0.05"/>
+    <origin rpy="-1.570796326795 0.0 0.0" xyz="0.0 0.062877 0.05"/>
+    <!-- <origin rpy="-1.570796326795 0.3316123 0.0" xyz="0.0 0.062877 0.05"/> -->
     <axis xyz="0 0 1"/>
     <limit effort="55.0" lower="-2.8" upper="2.8" velocity="11.72"/>
   </joint>
@@ -589,6 +596,26 @@ results of the optimization), otherwise we go with the old ones (generated for a
     <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
   </joint>
   <!-- virtual tip-->
+  <transmission name="trans_j_torso_base">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="j_torso_base">
+      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="j_torso_base_motor">
+      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+  <transmission name="trans_j_torso_1">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="j_torso_1">
+      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="j_torso_1_motor">
+      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
   <transmission name="trans_j_arm_2_1">
     <type>transmission_interface/SimpleTransmission</type>
     <joint name="j_arm_2_1">
@@ -879,7 +906,8 @@ results of the optimization), otherwise we go with the old ones (generated for a
   <joint name="j_arm_1_7" type="revolute">
     <parent link="arm_1_6"/>
     <child link="arm_1_7"/>
-    <origin rpy="1.570796326795 0.3316123 0.0" xyz="0.0 -0.062877 0.05"/>
+    <origin rpy="1.570796326795 0.0 0.0" xyz="0.0 -0.062877 0.05"/>
+    <!-- <origin rpy="1.570796326795 0.3316123 0.0" xyz="0.0 -0.062877 0.05"/> -->
     <axis xyz="0 0 1"/>
     <limit effort="55.0" lower="-2.8" upper="2.8" velocity="11.72"/>
   </joint>

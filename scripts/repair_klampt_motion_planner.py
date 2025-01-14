@@ -191,7 +191,7 @@ class RepairMotionPlanner:
 
         Parameters:
             joint_configs (list(float)): A list containing joint configurations of all 16 joints in the order of
-             [j_sliding_guide, j_torso_1, j_arm_1_1, j_arm_1_2, j_arm_1_3, j_arm_1_4, j_arm_1_5, j_arm_1_6, j_arm_1_7, j_arm_2_1, j_arm_2_2, j_arm_2_3, j_arm_2_4, j_arm_2_5, j_arm_2_6, j_arm_2_7]
+             [j_torso_base, j_torso_1, j_arm_1_1, j_arm_1_2, j_arm_1_3, j_arm_1_4, j_arm_1_5, j_arm_1_6, j_arm_1_7, j_arm_2_1, j_arm_2_2, j_arm_2_3, j_arm_2_4, j_arm_2_5, j_arm_2_6, j_arm_2_7]
 
         """
         # validate number of elements in joint_states
@@ -303,6 +303,12 @@ class RepairMotionPlanner:
         pose.position.y = t[1]
         pose.position.z = t[2]
         return pose
+    
+    def get_realRobot_EEs(self):
+        """ Returns left and right arm End-effector poses of the real robot. """
+        leftEE = self.getEndEffectorPose_leftArm(self.real_robot)
+        rightEE = self.getEndEffectorPose_rightArm(self.real_robot)
+        return leftEE, rightEE
     
     def print_robot_info(self):
         """ 

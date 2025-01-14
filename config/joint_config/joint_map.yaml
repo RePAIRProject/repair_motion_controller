@@ -1,5 +1,5 @@
 joint_map:
-  0: j_sliding_guide
+  0: j_torso_base
   1: j_torso_1
   17: j_arm_1_1
   18: j_arm_1_2

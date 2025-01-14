@@ -23,7 +23,7 @@ from repair_klampt_motion_planner import RepairMotionPlanner, home_joint_config
 
 
 JOINT_NAMES = [
-    'j_sliding_guide', 'j_torso_1', 
+    'j_torso_base', 'j_torso_1', 
     'j_arm_1_1', 'j_arm_1_2', 'j_arm_1_3', 'j_arm_1_4', 'j_arm_1_5', 'j_arm_1_6', 'j_arm_1_7',
     'j_arm_2_1', 'j_arm_2_2', 'j_arm_2_3', 'j_arm_2_4', 'j_arm_2_5', 'j_arm_2_6', 'j_arm_2_7' 
     ]
@@ -67,6 +67,10 @@ class RepairMotionControlServer:
         # xbot joint command publisher in set initial joint configuration
         self._xbot_cmd_pub = rospy.Publisher('/xbotcore/command', JointCommand)
 
+        # Publisher for real-robots left and right arm End-effector poses
+        self.leftEE_pub = rospy.Publisher('/left_arm/end_effector', Pose)
+        self.rightEE_pub = rospy.Publisher('/right_arm/end_effector', Pose)
+
         # Start the action server
         self._as.start()
         rospy.loginfo(f"{self._action_name} is started")
@@ -98,6 +102,11 @@ class RepairMotionControlServer:
         # get robot current joint configuration from robot_state publisher
         # set motion_planners real_robot configuration to received robot state
         self._planner.update_real_robot_joint_states(joint_states.position)
+        
+        # publish updated end-effector poses
+        leftEE, rightEE = self._planner.get_realRobot_EEs()
+        self.leftEE_pub.publish(leftEE)
+        self.rightEE_pub.publish(rightEE)
         
         
     def action_executor(self, goal):

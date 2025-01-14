@@ -38,7 +38,7 @@ xbotcore_param:
     /jm/enable_safety: {value: false, type: bool}  # safety checks (can be disabled in running a simulation. DO NOT DO THIS ON A REAL PROTOTYPE)
 
     /xbot/joint_initial_positions:
-        j_sliding_guide: 0.0
+        j_torso_base: 0.0
         j_torso_1: 0.0
         j_arm_1_1: -0.5
         j_arm_1_2: -0.5

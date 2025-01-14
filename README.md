@@ -192,6 +192,34 @@ repair_motion_planner/
           w: 0.7920
     "
     ```
+
+  - Home Pose:
+    ```bash
+    rostopic pub /repair_motion_controller/goal repair_motion_controller/RepairMoveToActionGoal  "goal:
+      arm: 2 
+      target_time: 5.0
+      target_pose_left:
+        position:
+          x: 0.2281434536725418
+          y: 0.2229998203688685
+          z: 1.5244485559609986
+        orientation:
+          x: 0.3745776186543538
+          y: -0.22078314586194223
+          z: -0.046757647640861
+          w: 0.8993109209242547
+      target_pose_right:
+        position:
+          x: 0.21597898714022729
+          y: -0.24652714722018665
+          z: 1.5566318838742945
+        orientation:
+          x: -0.37453463410597837
+          y: -0.22085599528517516
+          z: 0.0462163918152999
+          w: 0.899338914052578
+    "
+    ```
 </details>
 
 
