@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import rospy
 import rospkg
@@ -65,11 +65,11 @@ class RepairMotionControlServer:
         self.robot_states_sub = rospy.Subscriber('/joint_states', JointState, self.update_current_joint_config)
 
         # xbot joint command publisher in set initial joint configuration
-        self._xbot_cmd_pub = rospy.Publisher('/xbotcore/command', JointCommand)
+        self._xbot_cmd_pub = rospy.Publisher('/xbotcore/command', JointCommand, queue_size=10)
 
         # Publisher for real-robots left and right arm End-effector poses
-        self.leftEE_pub = rospy.Publisher('/left_arm/end_effector', Pose)
-        self.rightEE_pub = rospy.Publisher('/right_arm/end_effector', Pose)
+        self.leftEE_pub = rospy.Publisher('/left_arm/end_effector', Pose, queue_size=10)
+        self.rightEE_pub = rospy.Publisher('/right_arm/end_effector', Pose, queue_size=10)
 
         # Start the action server
         self._as.start()

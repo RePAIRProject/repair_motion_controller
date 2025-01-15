@@ -333,7 +333,7 @@ results of the optimization), otherwise we go with the old ones (generated for a
     <origin rpy="0 0 0" xyz="0 0 0"/>
     <parent link="sliding_guide_link"/>
     <child link="dummy_prismatic_link"/>
-    <axis xyz="0 0 -1"/>
+    <axis xyz="0 0 1"/>
     <limit effort="147" lower="-1.0" upper="1.0" velocity="5"/>
   </joint>
   <link name="dummy_prismatic_link"/>

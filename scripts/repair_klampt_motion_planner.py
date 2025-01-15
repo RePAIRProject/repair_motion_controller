@@ -53,7 +53,7 @@ RIGHT_ARM_EE_LINK = "right_hand_v1_2_research_grasp_link"
 VIS_UPDATE_RATE = 100  # Hz
 
 # PLANNER
-NUM_WAY_POINTS = 100
+NUM_WAY_POINTS = 500
 PLANNING_TIME_LIMIT = 2.0
 NUM_IK_TRIES = 5
 MAX_PLANNER_ITERS = 500
@@ -818,7 +818,7 @@ class RepairMotionPlanner:
     def get_ros_joint_trajectory_from_plan(\
         self, 
         plan:MotionPlan=None, 
-        target_time:float = 3.0, 
+        target_time:float = 8.0, 
         joint_update_rate:int=100
     ) -> JointTrajectory:
         """  
@@ -853,7 +853,7 @@ class RepairMotionPlanner:
         milestone_distance = np.abs(np.diff(path, axis=0))
         max_time_needed_for_milestone = np.max(milestone_distance / joint_vel_upper_limits, axis=1) 
         # add 2.0s of threshold to max_time_needed_for_milestone to slow down if speed is super fast!
-        max_time_needed_for_milestone += 2.0
+        max_time_needed_for_milestone += 5.0
 
         # Total time needed for full transition
         total_time_needed = np.sum(max_time_needed_for_milestone)   # add a threshold of 2.0 seconds 
