@@ -3,7 +3,7 @@
 import rospy
 import rospkg
 import actionlib
-from repair_motion_controller.msg import RepairMoveToAction, RepairMoveToFeedback, RepairMoveToResult
+from repair_motion_controller.msg import RepairMoveToAction, RepairMoveToFeedback, RepairMoveToResult, RepairMoveToGoal
 from geometry_msgs.msg import Pose
 from std_msgs.msg import Float64
 from sensor_msgs.msg import JointState
@@ -65,11 +65,11 @@ class RepairMotionControlServer:
         self.robot_states_sub = rospy.Subscriber('/joint_states', JointState, self.update_current_joint_config)
 
         # xbot joint command publisher in set initial joint configuration
-        self._xbot_cmd_pub = rospy.Publisher('/xbotcore/command', JointCommand)
+        self._xbot_cmd_pub = rospy.Publisher('/xbotcore/command', JointCommand, queue_size=10)
 
         # Publisher for real-robots left and right arm End-effector poses
-        self.leftEE_pub = rospy.Publisher('/left_arm/end_effector', Pose)
-        self.rightEE_pub = rospy.Publisher('/right_arm/end_effector', Pose)
+        self.leftEE_pub = rospy.Publisher('/left_arm/end_effector', Pose, queue_size=10)
+        self.rightEE_pub = rospy.Publisher('/right_arm/end_effector', Pose, queue_size=10)
 
         # timer for Klapmt vis actions
         self._timer = rospy.Timer(rospy.Duration(0.1), self.handle_vis_actions)
@@ -113,7 +113,7 @@ class RepairMotionControlServer:
         self.rightEE_pub.publish(rightEE)
         
         
-    def action_executor(self, goal):
+    def action_executor(self, goal: RepairMoveToGoal):
         # Validate the selected arm for planning:
         if goal.arm == 0:
             status = "Goal is received for Left Arm."
@@ -163,12 +163,14 @@ class RepairMotionControlServer:
         # get the path from the plan
         path = plan.getPath()
 
+
         # get the statistics of the plan
         stats = plan.getStats()
 
         # get the joint trajectory
         traj_msg = self._planner.get_ros_joint_trajectory_from_plan(plan, goal.target_time, joint_update_rate=100)
 
+        
         if traj_msg is None:
             status = "Faield to create the JointTrajectory for the plan."
             rospy.logwarn(status)
@@ -246,9 +248,51 @@ class RepairMotionControlServer:
         # Create a goal msg
         goal = FollowJointTrajectoryGoal()
         goal.trajectory = joint_trajectory
-           
-        # send the goal to the action servers
+
+        # Create a new trajectory with only the 0 index joint changing
+        # first_trajectory = JointTrajectory()
+        # first_trajectory.joint_names = joint_trajectory.joint_names
+        # first_point = joint_trajectory.points[0]
+
+        # for point in joint_trajectory.points:
+        #     new_point = JointTrajectoryPoint()
+        #     new_point.positions = list(first_point.positions)
+        #     new_point.positions[0] = point.positions[0]  # Change only the 0 index joint
+        #     # new_point.velocities = list(first_point.velocities) if first_point.velocities else []
+        #     # new_point.accelerations = list(first_point.accelerations) if first_point.accelerations else []
+        #     # new_point.effort = list(first_point.effort) if first_point.effort else []
+        #     new_point.time_from_start = point.time_from_start
+        #     first_trajectory.points.append(new_point)
+
+        # Create a new trajectory with only the 0 index joint fixed at the last point's 0 index joint
+        # second_trajectory = JointTrajectory()
+        # second_trajectory.joint_names = joint_trajectory.joint_names
+        # last_point = joint_trajectory.points[-1]
+
+        # for point in joint_trajectory.points:
+        #     new_point = JointTrajectoryPoint()
+        #     new_point.positions = list(point.positions)
+        #     new_point.positions[0] = last_point.positions[0]  # Fix the 0 index joint to the last point's 0 index joint
+        #     # new_point.velocities = list(point.velocities) if point.velocities else []
+        #     # new_point.accelerations = list(point.accelerations) if point.accelerations else []
+        #     # new_point.effort = list(point.effort) if point.effort else []
+        #     new_point.time_from_start = point.time_from_start
+        #     second_trajectory.points.append(new_point)
+
+     
+        # # send the goal to the action servers for first trajectory
+        # status = "Sending waypoints to the trajectory controllers..."
+        # goal.trajectory = first_trajectory
+        # self._fjt_client.send_goal(goal, feedback_cb=self.fjt_feedback_cb)
+
+        # # wait for the result
+        # self._fjt_client.wait_for_result()
+        # result = self._fjt_client.get_result()
+        
+        # if result.error_code != 0:
+            # send the goal to the action servers for second trajectory
         status = "Sending waypoints to the trajectory controllers..."
+        # goal.trajectory = second_trajectory
         self._fjt_client.send_goal(goal, feedback_cb=self.fjt_feedback_cb)
 
         # wait for the result

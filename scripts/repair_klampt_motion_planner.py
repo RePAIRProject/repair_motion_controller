@@ -159,6 +159,8 @@ class RepairMotionPlanner:
                 print("moveToGhostPose clicked!")
                 self.resetGhost = True
 
+    
+
     def __visualize(self):
         if self.show_vis:
             # Configure Camera View

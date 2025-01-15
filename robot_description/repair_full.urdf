@@ -333,10 +333,27 @@ results of the optimization), otherwise we go with the old ones (generated for a
     <origin rpy="0 0 0" xyz="0 0 0"/>
     <parent link="sliding_guide_link"/>
     <child link="dummy_prismatic_link"/>
-    <axis xyz="0 0 -1"/>
-    <limit effort="147" lower="-1.0" upper="1.0" velocity="5"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="147" lower="-1.0" upper="1.0" velocity="2"/>
   </joint>
-  <link name="dummy_prismatic_link"/>
+
+  <link name="dummy_prismatic_link">
+  <visual>
+    <origin rpy="0 0 0" xyz="0.0 0.0 0"/>
+    <geometry>
+      <box size="0.1 0.1 1.0"/>
+    </geometry>
+    <material name="blue">
+      <color rgba="0.0 0.0 1.0 1.0"/>
+    </material>
+  </visual>
+    <inertial>
+      <origin xyz="0 0 0"/>
+      <mass value="0.0"/>
+      <inertia ixx="0.0" ixy="0.0" ixz="0.0" iyy="0.0" iyz="0.0" izz="0.0"/>
+    </inertial>
+  </link>
+
   <link name="torso_1">
     <inertial>
       <origin xyz="0.0004977651 -0.00042604032 -0.16838189"/>

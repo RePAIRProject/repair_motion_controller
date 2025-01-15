@@ -133,11 +133,11 @@ repair_motion_planner/
     ```bash
     rostopic pub /repair_motion_controller/goal repair_motion_controller/RepairMoveToActionGoal "goal:
       arm: 0
-      target_time: 2.0
+      target_time: 5.0
       target_pose_left:
         position:
           x: 0.4105
-          y: 0.8265
+          y: 0.4265
           z: 1.3946
         orientation:
           x: -0.4968
@@ -151,11 +151,11 @@ repair_motion_planner/
     ```bash
     rostopic pub /repair_motion_controller/goal repair_motion_controller/RepairMoveToActionGoal  "goal:
       arm: 1 
-      target_time: 2.0
+      target_time: 5.0
       target_pose_right:
         position:
           x: 0.3854
-          y: -0.8531
+          y: -0.2531
           z: 1.3946
         orientation:
           x: 0.4969
@@ -231,3 +231,54 @@ repair_motion_planner/
 ### Klampt Planner Configuaration:
 
 Configuration for `klampt` planner and `vis` can be found here: [repair_klampt_motion_planner.py (line 40)](./scripts/repair_klampt_motion_planner.py#L40)
+
+
+
+
+```bash
+rostopic pub /repair_motion_controller/goal repair_motion_controller/RepairMoveToActionGoal "goal:
+  arm: 0
+  target_time: 5.0
+  target_pose_left:
+    position:
+      x: 0.209084877905509
+      y: 0.8942570077661147
+      z: 1.5993823229724475
+    orientation:
+      x: 0.14842500925008567
+      y:  -0.19495901809158783
+      z: -0.10065531515921401
+      w: 0.9642766747277853
+"
+
+```
+
+
+---
+
+```bash
+rostopic pub /repair_motion_controller/goal repair_motion_controller/RepairMoveToActionGoal  "goal:
+      arm: 2 
+      target_time: 5.0
+      target_pose_left:
+        position: 
+          x: 0.1958703240833261
+          y: -0.08758726582177793
+          z: 1.1830868757440036
+        orientation: 
+          x: -0.05987144540615223
+          y: 0.6858928654870733
+          z: 0.04999987613342634
+          w: 0.7235097784311916
+      target_pose_right:
+        position: 
+          x: 0.28814321141578464
+          y: -0.6891961112052521
+          z: 1.1390010398515038
+        orientation: 
+          x: -0.08853749024260138
+          y: 0.7238394180456668
+          z: 0.17407300131235046
+          w: 0.6617523705427599
+    "
+```
