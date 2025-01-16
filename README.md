@@ -169,7 +169,7 @@ repair_motion_planner/
     ```bash
     rostopic pub /repair_motion_controller/goal repair_motion_controller/RepairMoveToActionGoal  "goal:
       arm: 2 
-      target_time: 2.0
+      target_time: 5.0
       target_pose_left:
         position:
           x: 0.0105
@@ -258,7 +258,7 @@ rostopic pub /repair_motion_controller/goal repair_motion_controller/RepairMoveT
 
 ```bash
 rostopic pub /repair_motion_controller/goal repair_motion_controller/RepairMoveToActionGoal  "goal:
-      arm: 2 
+      arm: 0 
       target_time: 5.0
       target_pose_left:
         position: 
@@ -270,15 +270,108 @@ rostopic pub /repair_motion_controller/goal repair_motion_controller/RepairMoveT
           y: 0.6858928654870733
           z: 0.04999987613342634
           w: 0.7235097784311916
-      target_pose_right:
-        position: 
-          x: 0.28814321141578464
-          y: -0.6891961112052521
-          z: 1.1390010398515038
-        orientation: 
-          x: -0.08853749024260138
-          y: 0.7238394180456668
-          z: 0.17407300131235046
-          w: 0.6617523705427599
     "
 ```
+
+
+
+
+
+
+
+<!-- ======================= TEST GOALS ============================== -->
+
+<!-- 01 -->
+
+```bash
+rostopic pub /repair_motion_controller/goal repair_motion_controller/RepairMoveToActionGoal  "goal:
+      arm: 0
+      target_time: 8.0
+      target_pose_left:
+        position: 
+          x: 0.12023535437848279
+          y: 0.0352127
+          z: 1.325
+        orientation: 
+          x: 0.0
+          y: -0.7071067
+          z: 0.0
+          w: -0.7071067
+    "
+  ```
+
+<!-- 02 -->
+
+```bash
+rostopic pub /repair_motion_controller/goal repair_motion_controller/RepairMoveToActionGoal  "goal:
+      arm: 0
+      target_time: 5.0
+      target_pose_left:
+        position: 
+          x: 0.12023535437848279
+          y: 0.0352172
+          z: 1.325
+        orientation: 
+          x: 0.0
+          y: -0.79280532
+          z: 0.0
+          w: -0.6094749
+    "
+  ```
+
+<!-- 03 -->
+
+```bash
+rostopic pub /repair_motion_controller/goal repair_motion_controller/RepairMoveToActionGoal  "goal:
+      arm: 0
+      target_time: 5.0
+      target_pose_left:
+        position: 
+          x: 0.14023534
+          y: 0.035217240
+          z: 1.075
+        orientation: 
+          x: 0.0
+          y: -0.79280532
+          z: 0.0
+          w: -0.609474957
+    "
+  ```
+
+<!-- 04 -->
+
+```bash
+rostopic pub /repair_motion_controller/goal repair_motion_controller/RepairMoveToActionGoal  "goal:
+      arm: 0
+      target_time: 5.0
+      target_pose_left:
+        position: 
+          x: 0.14023534
+          y: 0.035217240
+          z: 1.2475
+        orientation: 
+          x: 0.0
+          y: -0.792805
+          z: 0.0
+          w: -0.609474957
+    "
+  ```
+
+<!-- 05 -->
+
+```bash
+rostopic pub /repair_motion_controller/goal repair_motion_controller/RepairMoveToActionGoal  "goal:
+      arm: 0
+      target_time: 3.0
+      target_pose_left:
+        position: 
+          x: 0.2
+          y: 0.5
+          z: 1.35
+        orientation: 
+          x: 0.0
+          y: -0.79281
+          z: 0.0
+          w: -0.609474957
+    "
+  ```

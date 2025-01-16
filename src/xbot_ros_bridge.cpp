@@ -76,6 +76,8 @@ void JointTrajectoryExecutor::executeCB(const control_msgs::FollowJointTrajector
 
         // publish joint cmd
         publishJointCommads(joint_names, joint_positions);
+        
+        
 
         // ros::Duration(0.2).sleep(); 
         // ROS_INFO("sending next point...");
@@ -86,6 +88,8 @@ void JointTrajectoryExecutor::executeCB(const control_msgs::FollowJointTrajector
         // Wait until the next time_from_start
         ros::Time current_time = ros::Time::now();
         ros::Duration sleep_time = start_time + time_from_start - current_time;
+
+        
         
         if (sleep_time.toSec() > 0)
         {
@@ -94,6 +98,22 @@ void JointTrajectoryExecutor::executeCB(const control_msgs::FollowJointTrajector
         else
         {
             ROS_WARN("Missed time point! Continuing to the next trajectory point.");
+        }
+
+        // Gradually decelerate the trajectory
+        if (i > 0)
+        {
+            ros::Duration previous_time_from_start = trajectory_points[i - 1].time_from_start;
+            ros::Duration current_time_from_start = trajectory_points[i].time_from_start;
+            ros::Duration time_diff = current_time_from_start - previous_time_from_start;
+
+            if (time_diff.toSec() > 0)
+            {
+            double deceleration_factor = 10.0 - (static_cast<double>(i) / amount_of_trajectory_points);
+            ros::Duration adjusted_sleep_time = time_diff * deceleration_factor;
+            adjusted_sleep_time.sleep();
+            ROS_WARN("sleep %f", adjusted_sleep_time);
+            }
         }
     }
 

@@ -54,8 +54,8 @@ VIS_UPDATE_RATE = 100  # Hz
 
 # PLANNER
 NUM_WAY_POINTS = 100
-PLANNING_TIME_LIMIT = 2.0
-NUM_IK_TRIES = 5
+PLANNING_TIME_LIMIT = 5.0
+NUM_IK_TRIES = 100
 MAX_PLANNER_ITERS = 500
 MAX_PLANNER_TIME = 10.0
 EDGE_CHECK_RESOLUTION = 0.01
@@ -64,8 +64,8 @@ SIMPLIFY_TYPE = "ConvexHull"
 
 PLANNER_SETTINGS_SBL = {  # SBL planner.
     "type": "sbl",
-    "perturbationRadius": 0.1,
-    "bidirectional": 0,
+    "perturbationRadius": 0.25,
+    "bidirectional": True,
     "shortcut": 1,
     "restart": 1,
     "restartTermCond": "{foundSolution:1,maxIters:1000}",
@@ -74,7 +74,7 @@ PLANNER_SETTINGS_SBL = {  # SBL planner.
 PLANNER_SETTINGS_RRT = {  # RRT planner.
     "type": "rrt",
     "perturbationRadius": 0.25,
-    "bidirectional": False,
+    "bidirectional": True,
     "shortcut": True,
     "restart": True,
     "restartTermCond": "{foundSolution:1,maxIters:1000}",
@@ -976,6 +976,8 @@ class RepairMotionPlanner:
         # Flatten the list of waypoints
         waypoints = np.round(np.vstack(waypoints), 8)
 
+
+
         # generate time stamps
         time_from_start = np.round(np.linspace(0, target_time, len(waypoints)), 4)
 
@@ -991,6 +993,7 @@ class RepairMotionPlanner:
             point.positions = waypoint.tolist()  # Convert NumPy array to a list
             point.time_from_start = rospy.Duration(time)  # Convert time to ROS Duration
             traj_msg.points.append(point)
+
 
         return traj_msg
         
