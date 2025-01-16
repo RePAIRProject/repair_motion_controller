@@ -286,7 +286,7 @@ rostopic pub /repair_motion_controller/goal repair_motion_controller/RepairMoveT
 ```bash
 rostopic pub /repair_motion_controller/goal repair_motion_controller/RepairMoveToActionGoal  "goal:
       arm: 0
-      target_time: 8.0
+      target_time: 3.0
       target_pose_left:
         position: 
           x: 0.12023535437848279

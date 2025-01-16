@@ -101,20 +101,20 @@ void JointTrajectoryExecutor::executeCB(const control_msgs::FollowJointTrajector
         }
 
         // Gradually decelerate the trajectory
-        if (i > 0)
-        {
-            ros::Duration previous_time_from_start = trajectory_points[i - 1].time_from_start;
-            ros::Duration current_time_from_start = trajectory_points[i].time_from_start;
-            ros::Duration time_diff = current_time_from_start - previous_time_from_start;
+        // if (i > 0)
+        // {
+        //     ros::Duration previous_time_from_start = trajectory_points[i - 1].time_from_start;
+        //     ros::Duration current_time_from_start = trajectory_points[i].time_from_start;
+        //     ros::Duration time_diff = current_time_from_start - previous_time_from_start;
 
-            if (time_diff.toSec() > 0)
-            {
-            double deceleration_factor = 10.0 - (static_cast<double>(i) / amount_of_trajectory_points);
-            ros::Duration adjusted_sleep_time = time_diff * deceleration_factor;
-            adjusted_sleep_time.sleep();
-            ROS_WARN("sleep %f", adjusted_sleep_time);
-            }
-        }
+        //     if (time_diff.toSec() > 0)
+        //     {
+        //     double deceleration_factor = (static_cast<double>(i) / amount_of_trajectory_points) * 10;
+        //     ros::Duration adjusted_sleep_time = time_diff * deceleration_factor;
+        //     adjusted_sleep_time.sleep();
+        //     ROS_WARN("sleep %f", adjusted_sleep_time.toSec());
+        //     }
+        // }
     }
 
     ROS_INFO("Trajectory execution is completed!");
