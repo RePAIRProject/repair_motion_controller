@@ -133,11 +133,11 @@ repair_motion_planner/
     ```bash
     rostopic pub /repair_motion_controller/goal repair_motion_controller/RepairMoveToActionGoal "goal:
       arm: 0
-      target_time: 2.0
+      target_time: 5.0
       target_pose_left:
         position:
           x: 0.4105
-          y: 0.8265
+          y: 0.4265
           z: 1.3946
         orientation:
           x: -0.4968
@@ -151,11 +151,11 @@ repair_motion_planner/
     ```bash
     rostopic pub /repair_motion_controller/goal repair_motion_controller/RepairMoveToActionGoal  "goal:
       arm: 1 
-      target_time: 2.0
+      target_time: 5.0
       target_pose_right:
         position:
           x: 0.3854
-          y: -0.8531
+          y: -0.2531
           z: 1.3946
         orientation:
           x: 0.4969
@@ -169,7 +169,7 @@ repair_motion_planner/
     ```bash
     rostopic pub /repair_motion_controller/goal repair_motion_controller/RepairMoveToActionGoal  "goal:
       arm: 2 
-      target_time: 2.0
+      target_time: 5.0
       target_pose_left:
         position:
           x: 0.0105
@@ -231,3 +231,147 @@ repair_motion_planner/
 ### Klampt Planner Configuaration:
 
 Configuration for `klampt` planner and `vis` can be found here: [repair_klampt_motion_planner.py (line 40)](./scripts/repair_klampt_motion_planner.py#L40)
+
+
+
+
+```bash
+rostopic pub /repair_motion_controller/goal repair_motion_controller/RepairMoveToActionGoal "goal:
+  arm: 0
+  target_time: 5.0
+  target_pose_left:
+    position:
+      x: 0.209084877905509
+      y: 0.8942570077661147
+      z: 1.5993823229724475
+    orientation:
+      x: 0.14842500925008567
+      y:  -0.19495901809158783
+      z: -0.10065531515921401
+      w: 0.9642766747277853
+"
+
+```
+
+
+---
+
+```bash
+rostopic pub /repair_motion_controller/goal repair_motion_controller/RepairMoveToActionGoal  "goal:
+      arm: 0 
+      target_time: 5.0
+      target_pose_left:
+        position: 
+          x: 0.1958703240833261
+          y: -0.08758726582177793
+          z: 1.1830868757440036
+        orientation: 
+          x: -0.05987144540615223
+          y: 0.6858928654870733
+          z: 0.04999987613342634
+          w: 0.7235097784311916
+    "
+```
+
+
+
+
+
+
+
+<!-- ======================= TEST GOALS ============================== -->
+
+<!-- 01 -->
+
+```bash
+rostopic pub /repair_motion_controller/goal repair_motion_controller/RepairMoveToActionGoal  "goal:
+      arm: 0
+      target_time: 3.0
+      target_pose_left:
+        position: 
+          x: 0.12023535437848279
+          y: 0.0352127
+          z: 1.325
+        orientation: 
+          x: 0.0
+          y: -0.7071067
+          z: 0.0
+          w: -0.7071067
+    "
+  ```
+
+<!-- 02 -->
+
+```bash
+rostopic pub /repair_motion_controller/goal repair_motion_controller/RepairMoveToActionGoal  "goal:
+      arm: 0
+      target_time: 5.0
+      target_pose_left:
+        position: 
+          x: 0.12023535437848279
+          y: 0.0352172
+          z: 1.325
+        orientation: 
+          x: 0.0
+          y: -0.79280532
+          z: 0.0
+          w: -0.6094749
+    "
+  ```
+
+<!-- 03 -->
+
+```bash
+rostopic pub /repair_motion_controller/goal repair_motion_controller/RepairMoveToActionGoal  "goal:
+      arm: 0
+      target_time: 5.0
+      target_pose_left:
+        position: 
+          x: 0.14023534
+          y: 0.035217240
+          z: 1.075
+        orientation: 
+          x: 0.0
+          y: -0.79280532
+          z: 0.0
+          w: -0.609474957
+    "
+  ```
+
+<!-- 04 -->
+
+```bash
+rostopic pub /repair_motion_controller/goal repair_motion_controller/RepairMoveToActionGoal  "goal:
+      arm: 0
+      target_time: 5.0
+      target_pose_left:
+        position: 
+          x: 0.14023534
+          y: 0.035217240
+          z: 1.2475
+        orientation: 
+          x: 0.0
+          y: -0.792805
+          z: 0.0
+          w: -0.609474957
+    "
+  ```
+
+<!-- 05 -->
+
+```bash
+rostopic pub /repair_motion_controller/goal repair_motion_controller/RepairMoveToActionGoal  "goal:
+      arm: 0
+      target_time: 3.0
+      target_pose_left:
+        position: 
+          x: 0.2
+          y: 0.5
+          z: 1.35
+        orientation: 
+          x: 0.0
+          y: -0.79281
+          z: 0.0
+          w: -0.609474957
+    "
+  ```

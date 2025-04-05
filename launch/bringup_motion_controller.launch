@@ -9,5 +9,14 @@
         <param name="robot" type="string" value="real" />   <!--  value options: { dummy, real } -->
     </node>
 
+    <!-- Start moveit as backup -->
+    <include file="$(find repair_moveit_xbot)/launch/bringup_moveit.launch"/>
+
+    <node name="moveit_client_node" pkg="repair_interface" type="moveit_client.py" output="screen" />
+
+    <!-- Start rviz -->
+    <include file="$(find repair_motion_controller)/launch/klampt_rviz.launch">
+        <arg name="rviz_config" value="$(find repair_motion_controller)/launch/klampt_xbot.rviz" />
+    </include>
 
 </launch>

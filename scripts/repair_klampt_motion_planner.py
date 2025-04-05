@@ -53,9 +53,9 @@ RIGHT_ARM_EE_LINK = "right_hand_v1_2_research_grasp_link"
 VIS_UPDATE_RATE = 100  # Hz
 
 # PLANNER
-NUM_WAY_POINTS = 500
-PLANNING_TIME_LIMIT = 2.0
-NUM_IK_TRIES = 5
+NUM_WAY_POINTS = 1000
+PLANNING_TIME_LIMIT = 5.0
+NUM_IK_TRIES = 100
 MAX_PLANNER_ITERS = 500
 MAX_PLANNER_TIME = 10.0
 EDGE_CHECK_RESOLUTION = 0.01
@@ -64,8 +64,8 @@ SIMPLIFY_TYPE = "ConvexHull"
 
 PLANNER_SETTINGS_SBL = {  # SBL planner.
     "type": "sbl",
-    "perturbationRadius": 0.1,
-    "bidirectional": 0,
+    "perturbationRadius": 0.25,
+    "bidirectional": True,
     "shortcut": 1,
     "restart": 1,
     "restartTermCond": "{foundSolution:1,maxIters:1000}",
@@ -74,7 +74,7 @@ PLANNER_SETTINGS_SBL = {  # SBL planner.
 PLANNER_SETTINGS_RRT = {  # RRT planner.
     "type": "rrt",
     "perturbationRadius": 0.25,
-    "bidirectional": False,
+    "bidirectional": True,
     "shortcut": True,
     "restart": True,
     "restartTermCond": "{foundSolution:1,maxIters:1000}",
@@ -91,7 +91,12 @@ CAMERA_POS = [3, 2, 1]  # Camera position
 
 class RepairMotionPlanner:
     def __init__(self, show_vis=True):
+        # flags
         self.show_vis = show_vis
+
+        self.moveToHome = False
+        self.moveToGhost = False
+        self.resetGhost = False
 
         # load robot for planning
         self.world = WorldModel()
@@ -141,7 +146,21 @@ class RepairMotionPlanner:
     def __logerr(self, info):
         print(f"\033[91m[ERROR] [{rospy.Time.now().secs}.{rospy.Time.now().nsecs}]: {info}\033[0m")
       
-        
+    
+    def on_moveToHomePose(self):
+                print("moveToHomePose clicked!")
+                self.moveToHome = True
+    
+    def on_moveToGhostPose(self):
+                print("moveToGhostPose clicked!")
+                self.moveToGhost = True
+
+    def on_resetGhostPose(self):
+                print("moveToGhostPose clicked!")
+                self.resetGhost = True
+
+    
+
     def __visualize(self):
         if self.show_vis:
             # Configure Camera View
@@ -156,7 +175,15 @@ class RepairMotionPlanner:
 
             vis.add("world", self.world)
             vis.add("real_robot", self.real_robot, color = [0.5,0.5,0.5,1]) # use to show the real robot's state
+            vis.add("ghost", self.world.robot(0).getConfig(), color = (0,1,0,0.5))
+            vis.edit("ghost")
+
+            vis.addAction(self.on_moveToHomePose, "MoveToHomePose")
+            vis.addAction(self.on_moveToGhostPose, "MoveToGhostPose")
+            vis.addAction(self.on_resetGhostPose, "ResetGhostPose")
+
             vis.show()
+            #
 
             self.update_vis_thread = Thread(target=self.__update_vis_task)
             self.update_vis_thread.start()
@@ -164,10 +191,11 @@ class RepairMotionPlanner:
     def __update_vis_task(self):
         while vis.shown():
             vis.lock()
-            self.planner_robot.setConfig(self.planner_robot.getConfig()) # use to show the planned target configuration
+            vis.setItemConfig("ghost", self.planner_robot.getConfig())
+            # self.planner_robot.setConfig(self.planner_robot.getConfig()) # use to show the planned target configuration
             self.real_robot.setConfig(self.real_robot.getConfig())
             vis.unlock()
-            vis.addText("RB1", "%.2f" % (time.time(),), position=(0, 20))
+            # vis.addText("RB1", "%.2f" % (time.time(),), position=(0, 20))
             time.sleep(1 / VIS_UPDATE_RATE)
 
     def __set_robot_color(self, color=[1, 1, 0, 0.5]):
@@ -176,12 +204,22 @@ class RepairMotionPlanner:
             appearance = link.appearance() 
             appearance.setColor(color[0], color[1], color[2], color[3])
 
+    def reset_ghost(self):
+        self.planner_robot.setConfig(self.real_robot.getConfig())
+        self.__loginfo("Ghost pose has been reset to the current robot pose.")
+
+    def get_ghost_config(self):
+        return vis.getItemConfig("ghost")
+
+
+
     def execute_planned_path_in_vis(self, path):
         """  
         When vis is enabled, this will show the planned motion in vis for given the interpolate path.
         """
         for milestone in path:
-            self.planner_robot.setConfig(milestone)
+            vis.setItemConfig("ghost", milestone)
+            # self.planner_robot.setConfig(milestone)
             time.sleep(1 / len(path))  # Wait for visualization update
 
     def update_real_robot_joint_states(self, joint_configs:List):
@@ -251,9 +289,9 @@ class RepairMotionPlanner:
         robot_drivers = self.get_robot_drivers()
         return [drv.getLimits() for drv in robot_drivers]
 
-    def setJointValues(self, robot:RobotModel, val:float):
+    def setJointValues(self, robot:RobotModel, vals):
         for i in range(robot.numDrivers()):
-            robot.driver(i).setValue(val[i])
+            robot.driver(i).setValue(vals[i])
         robot.setConfig(self.planner_robot.getConfig())
 
     def getEndEffectorPose_leftArm(self, robot:RobotModel) -> Pose:
@@ -727,6 +765,64 @@ class RepairMotionPlanner:
         if self.show_vis:
             vis.add("trajectory", traj.discretize(0.5), color=(0, 0, 1, 1))
         return traj
+    
+
+    def get_plan_to_joint_goal(self, target_robot_config=None, target_joint_config=None, planner:str ='sbl'):
+        """  
+        Plan a path to a joint goal for the robot arms.
+
+        Parameters:
+            target_joint_config (List[float]): The target joint configuration for the robot arms.
+
+        Returns:
+            MotionPlan: The `MotionPlan` object containing the planned path.
+        """
+        # set robot config to current config
+        if target_joint_config is not None:
+            start_config = self.real_robot.getConfig()
+            self.setJointValues(self.planner_robot, target_joint_config)
+        
+        elif target_robot_config is not None:
+            start_config = self.real_robot.getConfig()
+            self.planner_robot.setConfig(target_robot_config)
+
+        goal_robot_config = self.planner_robot.getConfig()
+        # self.planner_robot.setConfig(start_config)
+
+
+        # check if the goal configuration is feasible
+        if not self.is_robot_config_feasible(self.planner_robot.getConfig()):
+            error = f"\t- Configuration is not feasible: {self.get_feasibility_info(self.planner_robot.getConfig())}"
+            raise RuntimeError(error)
+
+        # if feasible
+        feasibility_info = self.get_feasibility_info(self.planner_robot.getConfig())
+        self.__loginfo(f"\t- Feasibility info: {feasibility_info}")
+        print("---\n")
+
+
+        # set robot config back to start config
+        self.planner_robot.setConfig(start_config)
+        
+        # get the plan from start config to goal config
+        self.__loginfo("Getting plan to the traget...")
+        plan, dt, num_iters = self.get_plan_to_goal_config(goal_robot_config, planner=planner)
+        info = f"plan info; \n \
+                \t- path len: {len(plan.getPath())}\n \
+                \t- time to plan: {dt}\n \
+                \t- num_iters: {num_iters}  \
+                "
+        self.__loginfo(info)
+        print("---\n")
+
+        # validate plan to goal config
+        if not self.validate_plan_to_goal_config(plan):
+            raise RuntimeError(f"Failed to plan a feasible path.\nPlanner stats: {plan.getStats()}")
+
+
+        self.__loginfo(f"Motion planning was successfully completed.\n")
+
+        return plan
 
 
     def get_plan_to_cartesian_goal(
@@ -880,6 +976,8 @@ class RepairMotionPlanner:
         # Flatten the list of waypoints
         waypoints = np.round(np.vstack(waypoints), 8)
 
+
+
         # generate time stamps
         time_from_start = np.round(np.linspace(0, target_time, len(waypoints)), 4)
 
@@ -895,6 +993,7 @@ class RepairMotionPlanner:
             point.positions = waypoint.tolist()  # Convert NumPy array to a list
             point.time_from_start = rospy.Duration(time)  # Convert time to ROS Duration
             traj_msg.points.append(point)
+
 
         return traj_msg
         

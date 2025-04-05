@@ -3,7 +3,7 @@
 import rospy
 import rospkg
 import actionlib
-from repair_motion_controller.msg import RepairMoveToAction, RepairMoveToFeedback, RepairMoveToResult
+from repair_motion_controller.msg import RepairMoveToAction, RepairMoveToFeedback, RepairMoveToResult, RepairMoveToGoal
 from geometry_msgs.msg import Pose
 from std_msgs.msg import Float64
 from sensor_msgs.msg import JointState
@@ -71,6 +71,10 @@ class RepairMotionControlServer:
         self.leftEE_pub = rospy.Publisher('/left_arm/end_effector', Pose, queue_size=10)
         self.rightEE_pub = rospy.Publisher('/right_arm/end_effector', Pose, queue_size=10)
 
+        # timer for Klapmt vis actions
+        self._timer = rospy.Timer(rospy.Duration(0.1), self.handle_vis_actions)
+
+
         # Start the action server
         self._as.start()
         rospy.loginfo(f"{self._action_name} is started")
@@ -109,8 +113,9 @@ class RepairMotionControlServer:
         self.rightEE_pub.publish(rightEE)
         
         
-    def action_executor(self, goal):
+    def action_executor(self, goal: RepairMoveToGoal):
         # Validate the selected arm for planning:
+        rospy.loginfo("TESTINGS")
         if goal.arm == 0:
             status = "Goal is received for Left Arm."
             self.set_status_feedback(status)
@@ -127,6 +132,13 @@ class RepairMotionControlServer:
             status = "Goal is received for Both Arms."
             self.set_status_feedback(status)
             rospy.loginfo(status)
+        elif goal.arm == 99:
+            status = "Goal is received for Home position."
+            self.set_status_feedback(status)
+            rospy.loginfo(status)
+            # Call the move_to_home() method
+            self.move_to_home()
+            return  # Exit early since we are handling this special case
         else:
             status = "Invalid Goal is received: goal.arm must be 0, 1, or 2"
             self.set_status_feedback(status)
@@ -134,6 +146,7 @@ class RepairMotionControlServer:
             # Terminate goal execution
             self.terminate_planning()
             return
+        
         
 
         print("\n################### START PLANNING ###################\n")
@@ -159,12 +172,14 @@ class RepairMotionControlServer:
         # get the path from the plan
         path = plan.getPath()
 
+
         # get the statistics of the plan
         stats = plan.getStats()
 
         # get the joint trajectory
-        traj_msg = self._planner.get_ros_joint_trajectory_from_plan(plan, goal.target_time, joint_update_rate=100)
+        traj_msg = self._planner.get_ros_joint_trajectory_from_plan(plan, goal.target_time, joint_update_rate=200)
 
+        
         if traj_msg is None:
             status = "Faield to create the JointTrajectory for the plan."
             rospy.logwarn(status)
@@ -242,9 +257,51 @@ class RepairMotionControlServer:
         # Create a goal msg
         goal = FollowJointTrajectoryGoal()
         goal.trajectory = joint_trajectory
-           
-        # send the goal to the action servers
+
+        # Create a new trajectory with only the 0 index joint changing
+        # first_trajectory = JointTrajectory()
+        # first_trajectory.joint_names = joint_trajectory.joint_names
+        # first_point = joint_trajectory.points[0]
+
+        # for point in joint_trajectory.points:
+        #     new_point = JointTrajectoryPoint()
+        #     new_point.positions = list(first_point.positions)
+        #     new_point.positions[0] = point.positions[0]  # Change only the 0 index joint
+        #     # new_point.velocities = list(first_point.velocities) if first_point.velocities else []
+        #     # new_point.accelerations = list(first_point.accelerations) if first_point.accelerations else []
+        #     # new_point.effort = list(first_point.effort) if first_point.effort else []
+        #     new_point.time_from_start = point.time_from_start
+        #     first_trajectory.points.append(new_point)
+
+        # Create a new trajectory with only the 0 index joint fixed at the last point's 0 index joint
+        # second_trajectory = JointTrajectory()
+        # second_trajectory.joint_names = joint_trajectory.joint_names
+        # last_point = joint_trajectory.points[-1]
+
+        # for point in joint_trajectory.points:
+        #     new_point = JointTrajectoryPoint()
+        #     new_point.positions = list(point.positions)
+        #     new_point.positions[0] = last_point.positions[0]  # Fix the 0 index joint to the last point's 0 index joint
+        #     # new_point.velocities = list(point.velocities) if point.velocities else []
+        #     # new_point.accelerations = list(point.accelerations) if point.accelerations else []
+        #     # new_point.effort = list(point.effort) if point.effort else []
+        #     new_point.time_from_start = point.time_from_start
+        #     second_trajectory.points.append(new_point)
+
+     
+        # # send the goal to the action servers for first trajectory
+        # status = "Sending waypoints to the trajectory controllers..."
+        # goal.trajectory = first_trajectory
+        # self._fjt_client.send_goal(goal, feedback_cb=self.fjt_feedback_cb)
+
+        # # wait for the result
+        # self._fjt_client.wait_for_result()
+        # result = self._fjt_client.get_result()
+        
+        # if result.error_code != 0:
+            # send the goal to the action servers for second trajectory
         status = "Sending waypoints to the trajectory controllers..."
+        # goal.trajectory = second_trajectory
         self._fjt_client.send_goal(goal, feedback_cb=self.fjt_feedback_cb)
 
         # wait for the result
@@ -253,24 +310,6 @@ class RepairMotionControlServer:
 
         return True if result.error_code == 0 else False
     
-    # def get_trajectory_msg_from_path(self, path, target_time) -> JointTrajectory:
-    #     # Create a goal msg
-    #     traj_msg = JointTrajectory()
-    #     traj_msg.joint_names = self._joint_names
-
-    #     # Populate trajectory points from path waypoints
-    #     time_from_start = 0
-    #     dt = min(target_time/len(path), 0.005)
-    #     for wp in path:
-    #         time_from_start += dt
-    #         point = JointTrajectoryPoint()
-    #         point.positions = wp
-    #         point.time_from_start = rospy.Duration(time_from_start)
-    #         traj_msg.points.append(point)
-
-    #     traj_msg.header.frame_id = "traj"
-    #     traj_msg.header.stamp = rospy.Time.now()
-    #     return traj_msg
     
     def terminate_planning(self):
         status = "Terminating planning.."
@@ -340,32 +379,188 @@ class RepairMotionControlServer:
 
 
     
-    # def move_robot_to_goal2(self, path, target_time):
-    #     """ 
-    #     Controls the robot with `robot_trajectory_controller/command` topic
-    #     """
-    #     # check if a subscriber available for '_joint_cmd_pub'
-
-    #     # Create the trajectory msg
-    #     traj_msg =  self.get_trajectory_msg_from_path(path, target_time)
-           
-    #     # send the goal to the action servers
-    #     status = "Publishing joint commands..."
-    #     self.set_status_feedback(status)
-    #     self._joint_cmd_pub.publish(traj_msg)
-
-    #     # wait till robot move to the target config
-    #     t0 = time.time()
-    #     while time.time() - t0 < target_time + 1.0:
-    #         pass
-
-    #     is_moved, error_to_target = self.validate_motion_to_target()
-
-    #     if not is_moved:
-    #         rospy.logwarn(f"LeftArm tcp error:  [{error_to_target[0]}] [{error_to_target[1]}]")
-    #         rospy.logwarn(f"RightArm tcp error: [{error_to_target[2]}] [{error_to_target[3]}]")
+    def handle_vis_actions(self, event):
+        if self._planner.moveToHome:
+            self._planner.moveToHome = False
+            self.move_to_home()
         
-    #     return True if is_moved else False
+        if self._planner.resetGhost:
+            self._planner.resetGhost = False
+            self._planner.reset_ghost()
+        
+        if self._planner.moveToGhost:
+            self._planner.moveToGhost = False
+            self.move_to_ghost()
+
+
+    def move_to_home(self):
+
+        print("\n################### START PLANNING ###################\n")
+
+        start_config = self._planner.real_robot.getConfig()
+        self._planner.planner_robot.setConfig(start_config)
+        try:
+            self.set_status_feedback("Start planning to Home...")
+            goal_joint_config = [val for _, val in home_joint_config.items()]
+
+
+            plan = self._planner.get_plan_to_joint_goal(target_joint_config=goal_joint_config)
+
+            self.set_status_feedback("Planning is successfully completed.")
+            print("stats: ")
+            print(plan.getStats())
+
+        except (RuntimeError, ValueError) as e:
+            rospy.logerr(f"{e}")
+            self.set_status_feedback(f"{e}")
+            self.terminate_planning()
+            self._planner.planner_robot.setConfig(start_config)
+            return
+
+        path = plan.getPath()
+        stats = plan.getStats()
+
+        traj_msg = self._planner.get_ros_joint_trajectory_from_plan(plan, 5.0, joint_update_rate=100)
+
+        if traj_msg is None:
+            status = "Faield to create the JointTrajectory for the plan."
+            rospy.logwarn(status)
+            self.set_status_feedback(f"{status}")
+            self.terminate_planning()
+            self._planner.planner_robot.setConfig(start_config)
+            return
+        
+        status = "JointTrajectory for the plan is created!"
+        self.set_status_feedback(f"{status}")
+        rospy.loginfo(status)
+
+        print("\n################### END PLANNING ###################\n")
+
+
+        print("\n################### START PLAN EXECUTION ###################\n")
+
+        # execute the motion in vis
+        if self._is_vis_enable:
+            def vis_traj_animate():
+                interpolate_path = self._planner.get_interpolate_path(path, num_waypoints=100)
+                self._planner.execute_planned_path_in_vis(interpolate_path)
+            Thread(target=lambda: vis_traj_animate()).start()
+
+        # move robot to goal
+        status = "Moving robot to the goal config..."
+        self.set_status_feedback(status)
+        rospy.loginfo(status)
+
+        if self.move_robot_to_goal(traj_msg):
+            rospy.loginfo(f"Plan stats: {stats}")
+            self._result.success = True
+
+            self._result.best_path_length = float(stats['bestPathLength'])
+            self._result.num_waypoints = int(len(traj_msg.points))
+            self._result.num_milestones = int(stats['numMilestones'])
+            self._result.duration.data = traj_msg.points[-1].time_from_start
+
+            self._as.set_succeeded(self._result)
+
+        else:
+            status = "Robot failed to reach the goal."
+            self.set_status_feedback(status)
+            rospy.logwarn(status)
+            self._result.success = False
+            self._as.set_succeeded(self._result)
+        
+        print("\n################### END PLAN EXECUTION ###################\n\n")
+
+
+
+    def move_to_ghost(self):
+        goal_joint_config = self._planner.get_ghost_config()
+        start_config = self._planner.real_robot.getConfig()
+        print("\n################### START PLANNING ###################\n")
+
+        try:
+            self.set_status_feedback("Start planning to Home...")
+            
+
+
+            plan = self._planner.get_plan_to_joint_goal(target_robot_config=goal_joint_config)
+
+            self.set_status_feedback("Planning is successfully completed.")
+            print("stats: ")
+            print(plan.getStats())
+
+        except (RuntimeError, ValueError) as e:
+            rospy.logerr(f"{e}")
+            self.set_status_feedback(f"{e}")
+            self.terminate_planning()
+            self._planner.planner_robot.setConfig(start_config)
+            return
+
+        path = plan.getPath()
+        stats = plan.getStats()
+
+        traj_msg = self._planner.get_ros_joint_trajectory_from_plan(plan, 5.0, joint_update_rate=100)
+
+        if traj_msg is None:
+            status = "Faield to create the JointTrajectory for the plan."
+            rospy.logwarn(status)
+            self.set_status_feedback(f"{status}")
+            self.terminate_planning()
+            self._planner.planner_robot.setConfig(start_config)
+            return
+        
+        status = "JointTrajectory for the plan is created!"
+        self.set_status_feedback(f"{status}")
+        rospy.loginfo(status)
+
+        print("\n################### END PLANNING ###################\n")
+
+
+        print("\n################### START PLAN EXECUTION ###################\n")
+
+        # execute the motion in vis
+        if self._is_vis_enable:
+            def vis_traj_animate():
+                interpolate_path = self._planner.get_interpolate_path(path, num_waypoints=100)
+                self._planner.execute_planned_path_in_vis(interpolate_path)
+            Thread(target=lambda: vis_traj_animate()).start()
+
+        # move robot to goal
+        status = "Moving robot to the goal config..."
+        self.set_status_feedback(status)
+        rospy.loginfo(status)
+
+        if self.move_robot_to_goal(traj_msg):
+            rospy.loginfo(f"Plan stats: {stats}")
+            self._result.success = True
+
+            self._result.best_path_length = float(stats['bestPathLength'])
+            self._result.num_waypoints = int(len(traj_msg.points))
+            self._result.num_milestones = int(stats['numMilestones'])
+            self._result.duration.data = traj_msg.points[-1].time_from_start
+
+            self._as.set_succeeded(self._result)
+
+
+        else:
+            status = "Robot failed to reach the goal."
+            self.set_status_feedback(status)
+            rospy.logwarn(status)
+            self._result.success = False
+            self._as.set_succeeded(self._result)
+        
+        print("\n################### END PLAN EXECUTION ###################\n\n")
+
+
+
+
+
+
+
+
+
+
+
 
 
 
