@@ -1,0 +1,21 @@
+# Goal definition
+uint8 arm             # 0 for left, 1 for right, 2 for both
+float32 target_time   # time duration to get to the target pose
+geometry_msgs/Pose target_pose_left  # Grasp target pose
+geometry_msgs/Pose target_pose_right # Release target pose
+
+---
+# Result definition
+bool success           # True if action was successful
+float32 best_path_length
+uint32  num_waypoints
+uint32  num_milestones
+std_msgs/Duration duration 
+
+
+
+
+
+---
+# Feedback definition
+string status       # Progress of the task from 0.0 to 1.0

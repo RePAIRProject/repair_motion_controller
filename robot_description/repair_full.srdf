@@ -1,0 +1,52 @@
+<?xml version="1.0" ?>
+
+
+<robot name="repair_full">
+
+    <group name="sliding_guide">
+        <chain base_link="sliding_guide_link" tip_link="dummy_prismatic_link"/>
+    </group>
+
+    <group name="torso">
+        <chain base_link="dummy_prismatic_link" tip_link="torso_1"/>
+    </group>
+
+    <group name="arm1">
+        <chain base_link="torso_1" tip_link="left_hand_v1_wide_grasp_link"/>
+    </group>
+
+    <group name="arm2">
+        <chain base_link="torso_1" tip_link="right_hand_v1_2_research_grasp_link"/>
+    </group>
+
+    <group name="chains">
+        <group name="sliding_guide"/>
+        <group name="torso"/>
+        <group name="arm1"/>
+        <group name="arm2"/>
+    </group>
+
+    <group_state group="chains" name="home">
+        <joint name="j_torso_base" value="0.0"/>
+        <joint name="j_torso_1" value="0.0"/>
+        <joint name="j_arm_1_1" value="-0.5"/>
+        <joint name="j_arm_1_2" value="-0.7"/>
+        <joint name="j_arm_1_3" value="0.5"/>
+        <joint name="j_arm_1_4" value="-1.2"/>
+        <joint name="j_arm_1_5" value="-0.5"/>
+        <joint name="j_arm_1_6" value="0.5"/>
+        <joint name="j_arm_1_7" value="0.5"/>
+        <joint name="j_arm_2_1" value="0.5"/>
+        <joint name="j_arm_2_2" value="0.7"/>
+        <joint name="j_arm_2_3" value="-0.5"/>
+        <joint name="j_arm_2_4" value="1.2"/>
+        <joint name="j_arm_2_5" value="0.5"/>
+        <joint name="j_arm_2_6" value="-0.5"/>
+        <joint name="j_arm_2_7" value="-0.5"/>
+    </group_state>
+
+
+    <!-- collisions -->
+
+
+</robot>

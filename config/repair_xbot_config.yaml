@@ -1,0 +1,56 @@
+XBotInterface:
+  urdf_path: $PWD/../robot_description/repair_full.urdf
+  srdf_path: $PWD/../robot_description/repair_full.srdf
+
+ModelInterface:
+  model_type: RBDL
+  is_model_floating_base: false
+
+
+# hal
+xbotcore_device_configs:
+    dummy: $PWD/hal/repair_dummy.yaml
+  
+  
+# threads
+xbotcore_threads:
+    rt_main:  {sched: fifo , prio: 60, period: 0.001, core_id: 2}
+    nrt_main: {sched: other, prio: 0 , period: 0.005}
+
+# plugins
+xbotcore_plugins:
+
+    homing:
+        thread: rt_main
+        type: homing
+
+    ros_io: {thread: nrt_main, type: ros_io}
+
+    ros_control: {thread: nrt_main, type: ros_control, params: {autostart: {type: bool, value: true}}}
+    
+# global parameters
+xbotcore_param:
+    /xbot/hal/joint_safety/filter_autostart: {value: false, type: bool}  # autostart joint filter
+    /xbot/hal/joint_safety/filter_cutoff_hz: {value: 2.0, type: double}    # set default filter bandwidth
+    /xbot/hal/enable_safety: {value: false, type: bool}
+    /jm/tx_filter_autostart: {value: false, type: bool}
+    /jm/tx_filter_cutoff: {value: 2.0, type: double}
+    /jm/enable_safety: {value: false, type: bool}  # safety checks (can be disabled in running a simulation. DO NOT DO THIS ON A REAL PROTOTYPE)
+
+    /xbot/joint_initial_positions:
+        j_torso_base: 0.0
+        j_torso_1: 0.0
+        j_arm_1_1: -0.5
+        j_arm_1_2: -0.7
+        j_arm_1_3: 0.5
+        j_arm_1_4: -1.2
+        j_arm_1_5: -0.5
+        j_arm_1_6: 0.5
+        j_arm_1_7: 0.5
+        j_arm_2_1: 0.5
+        j_arm_2_2: 0.7
+        j_arm_2_3: -0.5
+        j_arm_2_4: 1.2
+        j_arm_2_5: 0.5
+        j_arm_2_6: -0.5
+        j_arm_2_7: -0.5

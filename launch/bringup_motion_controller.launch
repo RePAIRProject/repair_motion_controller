@@ -1,0 +1,24 @@
+<launch>
+
+    <!-- Launch the xbot_os_bridge node -->
+    <node name="xbot_ros_bridge_node" pkg="repair_motion_controller" type="xbot_ros_bridge_node" output="screen" />
+
+    <!-- launch  the repair_motion_control_server.py -->
+    <node name="repair_motion_controller" pkg="repair_motion_controller" type="repair_motion_control_server.py" output="screen" >
+        <param name="enable_vis" type="bool" value="true" /> 
+        <param name="robot" type="string" value="dummy" />   <!--  value options: { dummy, real } -->
+    </node>
+
+    <!-- Start moveit as backup -->
+    <!-- REMOVE -->
+    <!-- <include file="$(find repair_moveit_xbot)/launch/bringup_moveit.launch">
+        <arg name="use_rviz" value="false" />
+    </include>
+    <node name="moveit_client_node" pkg="repair_interface" type="moveit_client.py" output="screen" /> -->
+
+    <!-- Start rviz -->
+    <include file="$(find repair_motion_controller)/launch/klampt_rviz.launch">
+        <arg name="rviz_config" value="$(find repair_motion_controller)/launch/klampt_xbot.rviz" />
+    </include>
+
+</launch>

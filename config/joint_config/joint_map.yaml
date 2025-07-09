@@ -1,0 +1,17 @@
+joint_map:
+  0: j_torso_base
+  1: j_torso_1
+  17: j_arm_1_1
+  18: j_arm_1_2
+  19: j_arm_1_3
+  20: j_arm_1_4
+  21: j_arm_1_5
+  22: j_arm_1_6
+  23: j_arm_1_7
+  67: j_arm_2_1
+  68: j_arm_2_2
+  69: j_arm_2_3
+  70: j_arm_2_4
+  71: j_arm_2_5
+  72: j_arm_2_6
+  73: j_arm_2_7
