@@ -90,6 +90,11 @@ CAMERA_POS = [3, 2, 1]  # Camera position
 
 # ===================== CONFIGURATIONS END ============================================================================
 
+def get_link_index_by_name(robot, link_name):
+    for i in range(robot.numLinks()):
+        if robot.link(i).getName() == link_name:
+            return i
+    raise ValueError(f"Link '{link_name}' not found")
 
 class RepairMotionPlanner:
     def __init__(self, show_vis=True):
@@ -126,6 +131,13 @@ class RepairMotionPlanner:
         self.set_initial_joint_positions(self.planner_robot)
         self.set_initial_joint_positions(self.real_robot)
 
+        # Retrieve link indices by name
+        link_1_7_index = get_link_index_by_name(self.planner_robot, "arm_1_7")
+        link_1_5_index = get_link_index_by_name(self.planner_robot, "arm_1_5")
+        link_1_flange_index = get_link_index_by_name(self.planner_robot, "arm_1_angle_flange")
+        # Disable self-collisions between specified link pairs
+        self.planner_robot.enableSelfCollision(link_1_7_index, link_1_5_index, False)
+        self.planner_robot.enableSelfCollision(link_1_flange_index, link_1_5_index, False)
         # initialize collisions
         self.__collider = WorldCollider(self.world)
         self.__cspace = RobotCSpace(self.planner_robot, self.__collider)
@@ -576,8 +588,9 @@ class RepairMotionPlanner:
         return goal_config, tcp_left_pose, tcp_right_pose, info
     
 
-    def get_robot_goal_config(self, left_arm_target_pose=None, right_arm_target_pose=None):
+    def get_robot_goal_config_old(self, left_arm_target_pose=None, right_arm_target_pose=None):
         """
+        Failsafe in case gazing or avoidance does not work as assumed.
         Sets the target pose for the left and/or right arm.
 
         Parameters:
@@ -661,21 +674,8 @@ class RepairMotionPlanner:
         
         return goal_config, left_tcp, right_tcp, info
     
-    def get_ik_objective_benno(self, link, goal_pos, goal_rot, ref=None) -> IKObjective:
-        """
-        Create an `IKObjective` for a specified link with given goal position and rotation.
-
-        Parameters:
-            link: The link of the robot for which the IK objective is to be created.
-            goal_pos: A list or tuple representing the target position (x, y, z) for the link.
-            goal_rot: A list or tuple representing the target rotation matrix (3x3) for the link.
-
-        Returns:
-            ik.Objective: The `IKObjective` with the specified goal position and rotation.
-        """
-        return ik.objective(link, ref=ref, R=goal_rot, t=goal_pos)
     
-    def get_robot_goal_config_old(self, left_arm_target_pose=None, right_arm_target_pose=None, gazing=True): # new test method
+    def get_robot_goal_config(self, left_arm_target_pose=None, right_arm_target_pose=None, gazing=True): # new test method
         """
         Sets the target pose for the left and/or right arm.
 
@@ -860,6 +860,44 @@ class RepairMotionPlanner:
                     
                 # for i in moveable_subset:
                 #     goal_config_main[i] = goal_config[i]
+                
+            elif(gazing==True):
+                acceptable_offset = 0.03
+                retries = 5
+                for gaze_idx in range(retries):
+                    sampled_goal = currentPose_EE + np.random.uniform(-acceptable_offset, acceptable_offset, size=3)
+                    print("SAMPLED GOAL: ", sampled_goal)
+                    print("CURRENT POST: ", currentPose_EE)
+                    dir_vec = vectorops.sub(avoid_Pose_EE, currentPose_EE)
+                    dir_vec = vectorops.unit(dir_vec)
+                    goal_rot = so3.align([0,0,1], dir_vec)
+                    R_z90 = so3.rotation([0, 0, 1], -math.radians(90))
+                    goal_rot = so3.mul(goal_rot, R_z90)
+                    ik_objective_gaze = self.get_ik_objective(gaze_link, sampled_goal, goal_rot)
+                    
+                    ik_objectives_copy = ik_objs.copy()
+                    ik_objectives_copy.append(ik_objective_gaze)
+                    
+                    if self.show_vis:
+                        try:
+                            vis.remove("IK goal move away")
+                        except:
+                            pass
+                        vis.add("IK goal move away",ik_objective_gaze)
+                        
+                    try:
+                        #goal_config_new, left_tcp_new, right_tcp_new, info = self.find_ik(ik_objs, num_tries = NUM_IK_TRIES, moveable_subset=moveable_subset, oneshot=False)
+                        goal_config_new, left_tcp_new, right_tcp_new, info = self.find_ik(ik_objectives_copy, num_tries = NUM_IK_TRIES, oneshot=False)
+                        if(info == "False"):
+                            continue
+                        elif(not self.is_robot_config_feasible(goal_config_new)):
+                            continue
+                        else:
+                            print("SETTING NEW GOAL CONFIG :)")
+                            goal_config, left_tcp, right_tcp = goal_config_new, left_tcp_new, right_tcp_new
+                            break
+                    except RuntimeError as e:
+                        raise RuntimeError(e)
                     
             
         
@@ -926,7 +964,8 @@ class RepairMotionPlanner:
         feasibility_checks = {
             'feasible': self.__cspace.feasible(robot_config),
             'collision': self.__cspace.envCollision(robot_config),
-            'self_collision': self.planner_robot.selfCollides(),
+            #'self_collision': self.planner_robot.selfCollides(),
+            'self_collision': len(list(self.__collider.robotSelfCollisions(self.planner_robot.index))) > 0,
             'joint_limits': self.__cspace.inJointLimits(robot_config)
         }
         return feasibility_checks
@@ -1094,7 +1133,8 @@ class RepairMotionPlanner:
             self, 
             left_arm_goal_pose:Pose = None, 
             right_arm_goal_pose:Pose = None, 
-            planner:str ='sbl'
+            planner:str ='sbl',
+            gazing=True
         ) -> MotionPlan:
         """
         Plan a path to a Cartesian goal for the robot arms.
@@ -1119,7 +1159,7 @@ class RepairMotionPlanner:
         
         # Get goal config
         self.__loginfo("Getting robot configuration for target pose...")
-        goal_config, left_tcp, right_tcp, info = self.get_robot_goal_config(left_arm_target_pose=left_arm_goal_pose, right_arm_target_pose=right_arm_goal_pose)
+        goal_config, left_tcp, right_tcp, info = self.get_robot_goal_config(left_arm_target_pose=left_arm_goal_pose, right_arm_target_pose=right_arm_goal_pose, gazing=gazing)
 
         left_tcp_pos = [left_tcp.position.x, left_tcp.position.y, left_tcp.position.z]
         left_tcp_quad = [left_tcp.orientation.x, left_tcp.orientation.y, left_tcp.orientation.z, left_tcp.orientation.w]

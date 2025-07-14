@@ -36,6 +36,8 @@ class RepairMotionControlServer:
         
         self._current_joint_config_dict = {} 
         self._joint_names = JOINT_NAMES
+        
+        self.gazing = True
 
         # parameters
         enable_vis_param = rospy.search_param('enable_vis')
@@ -157,7 +159,7 @@ class RepairMotionControlServer:
 
         try: 
             self.set_status_feedback("Start planning...")
-            plan = self._planner.get_plan_to_cartesian_goal(goal.target_pose_left, goal.target_pose_right)
+            plan = self._planner.get_plan_to_cartesian_goal(goal.target_pose_left, goal.target_pose_right, gazing=self.gazing)
             self.set_status_feedback("Planning is successfully completed.")
             print("stats: ")
             print(plan.getStats())
