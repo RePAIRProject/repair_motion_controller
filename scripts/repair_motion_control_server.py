@@ -37,7 +37,7 @@ class RepairMotionControlServer:
         self._current_joint_config_dict = {} 
         self._joint_names = JOINT_NAMES
         
-        self.gazing = True
+        self.gazing = False
 
         # parameters
         enable_vis_param = rospy.search_param('enable_vis')

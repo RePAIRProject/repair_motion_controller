@@ -14,6 +14,7 @@ from klampt.plan.cspace import *
 from klampt.plan.robotcspace import RobotCSpace
 from klampt.model.collide import WorldCollider
 from klampt.model.trajectory import *
+from klampt.model import collide, ik
 
 # from repair_klampt_motion_planner import rotation_matrix_to_euler, euler_to_rotation_matrix
 import os
@@ -523,12 +524,85 @@ class RepairMotionPlanner:
         """
         return ik.objective(link, ref=None, R=goal_rot, t=goal_pos)
 
+    # def find_ik(
+    #         self, 
+    #         objectives: List[IKObjective], 
+    #         num_tries: int = 5,
+    #         moveable_subset=[],
+    #         oneshot=True
+    #     ) ->Tuple[List[float], Pose, Pose, str]:
+    #     """  
+    #     Attempts to solve the inverse kinematics (IK) problem for the given objectives and start configuration.
+    #     Returns the goal configuration, TCP poses for the left and right arms, and information about success.
+
+    #     Parameters:
+    #         objectives (List[object]): List of IK objectives for the solver.
+    #         num_tries (int, optional): Number of tries with increasing tolerance (default is 5).
+
+    #     Returns:
+    #         Tuple ([List[float], Pose, Pose, str]):
+    #         A tuple containing:
+    #         - goal_config (List[float]): The resulting configuration if IK succeeds.
+    #         - tcp_left_pose (Pose): The TCP pose of the left arm as a `geometry_msgs/Pose` object.
+    #         - tcp_right_pose (Pose): The TCP pose of the right arm as a `geometry_msgs/Pose` object.
+    #         - info (str): Information about the IK process, indicating success or failure.
+
+    #     Raises:
+    #         RuntimeError: If IK fails after the specified number of tries.
+    #     """
+    #     solver = IKSolver(self.planner_robot)
+        
+    #     # can be used to plot all links, care spam
+    #     # for i in range(self.planner_robot.numLinks()):
+    #     #     link = self.planner_robot.link(i)
+    #     #     print(f"[{i}] Link name: {link.getName()}")
+        
+    #     if(moveable_subset != []):
+    #         #print(f"Adding subset {moveable_subset}")
+    #         solver.setActiveDofs(moveable_subset)
+        
+    #     for obj in objectives:
+    #         solver.add(obj)
+    #     # try to solve IK multiple times to get a good solution
+    #     # vary the tolerance each time
+    #     info = ""
+    #     res = False
+    #     for i in range(num_tries):
+    #         solver.setTolerance(1e-4 * 10 * i)
+    #         res = solver.solve()
+    #         if res:
+    #             info = f"IK succeeded after {i + 1} tries with tolerance {solver.getTolerance()}"
+    #             break
+
+    #     if not res:
+    #         error_msg = f"IK failed after {num_tries} attempts. Target pose(s) might be invalid. \nResidual: {solver.getResidual()}"
+    #         if(oneshot):
+    #             raise RuntimeError(error_msg)
+    #         else:
+    #             return None, None, None, "False"
+
+    #     goal_config = self.planner_robot.getConfig()
+    #     # get tcp poses
+    #     tcp_left_pose = self.getEndEffectorPose_leftArm(self.planner_robot)
+    #     tcp_right_pose = self.getEndEffectorPose_rightArm(self.planner_robot)
+        
+    #     return goal_config, tcp_left_pose, tcp_right_pose, info
+
+    def is_feasible(self):
+        # return True only if *no* self‐collisions are present
+        geoms = [g for _,g in self.__collider.geomList]
+        # pairs to test are given by the mask
+        pairs = [(i,j) for i in range(len(self.__collider.geomList))
+                        for j in self.__collider.mask[i] if i<j]
+        return not any(collide.self_collision_iter(geoms, pairs))
+
     def find_ik(
             self, 
             objectives: List[IKObjective], 
             num_tries: int = 5,
             moveable_subset=[],
-            oneshot=True
+            oneshot=True,
+            solve_nearby=True
         ) ->Tuple[List[float], Pose, Pose, str]:
         """  
         Attempts to solve the inverse kinematics (IK) problem for the given objectives and start configuration.
@@ -549,44 +623,61 @@ class RepairMotionPlanner:
         Raises:
             RuntimeError: If IK fails after the specified number of tries.
         """
-        solver = IKSolver(self.planner_robot)
         
-        # can be used to plot all links, care spam
-        # for i in range(self.planner_robot.numLinks()):
-        #     link = self.planner_robot.link(i)
-        #     print(f"[{i}] Link name: {link.getName()}")
-        
-        if(moveable_subset != []):
-            #print(f"Adding subset {moveable_subset}")
-            solver.setActiveDofs(moveable_subset)
-        
-        for obj in objectives:
-            solver.add(obj)
-        # try to solve IK multiple times to get a good solution
-        # vary the tolerance each time
-        info = ""
-        res = False
-        for i in range(num_tries):
-            solver.setTolerance(1e-4 * 10 * i)
-            res = solver.solve()
-            if res:
-                info = f"IK succeeded after {i + 1} tries with tolerance {solver.getTolerance()}"
-                break
+        active_dofs = moveable_subset if(moveable_subset != []) else None
+        solutions = []
+        success = False
+        deviation = 0.5
+        ik_max_iter = 0
+        init_config = self.planner_robot.getConfig()
+        for n in range(num_tries):
+            while not success and ik_max_iter <= 50:
+                ik_max_iter +=1  
+                self.planner_robot.setConfig(init_config)
+                if solve_nearby:
+                    success = ik.solve_nearby(
+                        objectives,
+                        maxDeviation=deviation,
+                        iters=2000,
+                        #tol=1e-2,
+                        activeDofs = active_dofs,
+                        feasibilityCheck=self.is_feasible,
+                        numRestarts=1,      # nearby: stick to current seed and small radius
+                    )
+                    deviation *= 1.2
+                else:
+                    success = ik.solve_global(objectives, 
+                                        iters=500,           # increase per‑trial iterations
+                                        tol=1e-2,             # tighter convergence
+                                        numRestarts=1,       # more random restarts
+                                        feasibilityCheck=self.is_feasible,
+                                        activeDofs = active_dofs,
+                                        startRandom=False      # randomize even the first guess
+                                        )
+                
+                if success:
+                    solutions.append(self.planner_robot.getConfig())
 
-        if not res:
-            error_msg = f"IK failed after {num_tries} attempts. Target pose(s) might be invalid. \nResidual: {solver.getResidual()}"
-            if(oneshot):
-                raise RuntimeError(error_msg)
-            else:
-                return None, None, None, "False"
+        final_solutions = []
+        if solutions != []:
+            for conf in solutions:
+                if not self.is_robot_config_feasible(conf):
+                    final_solutions.append(conf)
+        else:
+            print("No Valid IK found")
+            return None, None, None, "False"
+        
+        goal_config = min(solutions, key=lambda q: vectorops.distance(q, init_config))
+        self.planner_robot.setConfig(goal_config)
 
-        goal_config = self.planner_robot.getConfig()
         # get tcp poses
         tcp_left_pose = self.getEndEffectorPose_leftArm(self.planner_robot)
         tcp_right_pose = self.getEndEffectorPose_rightArm(self.planner_robot)
-        
-        return goal_config, tcp_left_pose, tcp_right_pose, info
-    
+        self.planner_robot.setConfig(init_config)
+
+        return goal_config, tcp_left_pose, tcp_right_pose, "True"
+       
+
 
     def get_robot_goal_config_old(self, left_arm_target_pose=None, right_arm_target_pose=None):
         """
@@ -820,11 +911,11 @@ class RepairMotionPlanner:
                         dir_vec = vectorops.sub(avoid_Pose_EE, sampled_goal)
                         dir_vec = vectorops.unit(dir_vec)
                         goal_rot = so3.align([0,0,1], dir_vec)
-                        ik_objective_avoid = self.get_ik_objective_benno(gaze_link, sampled_goal, goal_rot)
+                        ik_objective_avoid = self.get_ik_objective(gaze_link, sampled_goal, goal_rot)
                         
                     else:
                         goal_rot = so3.from_quaternion(avoid_Orientation_EE)
-                        ik_objective_avoid = self.get_ik_objective_benno(EE_link, sampled_goal, goal_rot)
+                        ik_objective_avoid = self.get_ik_objective(EE_link, sampled_goal, goal_rot)
                         
                     
                     
@@ -903,7 +994,7 @@ class RepairMotionPlanner:
         
         return goal_config, left_tcp, right_tcp, info
 
-    def sample_away_from_xy(self, position, min_xy_distance=0.15, xy_range=0.8, z_range=(-0.05, 0.05)):
+    def sample_away_from_xy(self, position, min_xy_distance=0.15, xy_range=0.3, z_range=(-0.05, 0.05)):
         """
         Sample 3D poses that are at least `min_xy_distance` away in x and y from the given position.
 
