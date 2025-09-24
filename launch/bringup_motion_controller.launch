@@ -12,7 +12,7 @@
     <!-- Start moveit as backup -->
     <!-- REMOVE -->
      <include file="$(find repair_moveit_xbot)/launch/bringup_moveit.launch">
-        <arg name="use_rviz" value="false" />
+        <arg name="use_rviz" value="true" />
     </include>
     <node name="moveit_client_node" pkg="repair_interface" type="moveit_client.py" output="screen" />
 

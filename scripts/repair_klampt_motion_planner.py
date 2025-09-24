@@ -14,8 +14,9 @@ from klampt.plan.cspace import *
 from klampt.plan.robotcspace import RobotCSpace
 from klampt.model.collide import WorldCollider
 from klampt.model.trajectory import *
-from klampt.model import collide, ik
-
+from klampt.model import collide, ik, create
+from klampt.math import so3, se3
+import copy
 # from repair_klampt_motion_planner import rotation_matrix_to_euler, euler_to_rotation_matrix
 import os
 import yaml
@@ -110,6 +111,7 @@ class RepairMotionPlanner:
         self.world = WorldModel()
         self.world.loadFile(WORLD_PATH)
         self.planner_robot = self.world.robot(0) 
+        self.sand_plane = self.add_sand_to_env()
 
         # load real_robot for visualizing real robot states
         self.__world_for_real_robot = WorldModel()
@@ -140,13 +142,13 @@ class RepairMotionPlanner:
         self.planner_robot.enableSelfCollision(link_1_7_index, link_1_5_index, False)
         self.planner_robot.enableSelfCollision(link_1_flange_index, link_1_5_index, False)
         # initialize collisions
+        self.ignore_sand = False
         self.__collider = WorldCollider(self.world)
         self.__cspace = RobotCSpace(self.planner_robot, self.__collider)
         self.__cspace.eps = 1e-2
         self.__init_robot_collision()
 
         self.__set_robot_color()
-
         if self.show_vis:
             self.__visualize()
 
@@ -174,7 +176,15 @@ class RepairMotionPlanner:
                 print("moveToGhostPose clicked!")
                 self.resetGhost = True
 
-    
+    def update_robot_cspace_and_colliders(self):
+        """
+        Updates the robot's configuration space and collision settings.
+        """
+        self.__collider = WorldCollider(self.world)
+        self.__cspace = RobotCSpace(self.planner_robot, self.__collider)
+        self.__cspace.eps = 1e-2
+        self.__init_robot_collision()
+
 
     def __visualize(self):
         if self.show_vis:
@@ -472,6 +482,15 @@ class RepairMotionPlanner:
                 self.planner_robot.enableSelfCollision(ignore_set[0].getIndex(), ignore_set[1].getIndex(), False)
         
         # ignore collision between left_inner_finger_pad and right_inner_finger_pad
+
+        if self.ignore_sand:
+            terrain_index = self.world.index(self.world.terrain("Sand"))
+
+            for i in range(self.world.numTerrains() + self.world.numRigidObjects() + self.world.numRobots()):
+                if i != terrain_index:
+                    self.__collider.ignoreCollision(i, terrain_index)
+
+        
         self.__collider.ignoreCollision(
             (
                 self.planner_robot.link("torso_1"),
@@ -644,7 +663,7 @@ class RepairMotionPlanner:
                         feasibilityCheck=self.is_feasible,
                         numRestarts=1,      # nearby: stick to current seed and small radius
                     )
-                    deviation *= 1.2
+                    deviation *= 1.1
                 else:
                     success = ik.solve_global(objectives, 
                                         iters=500,           # increase per‑trial iterations
@@ -673,13 +692,13 @@ class RepairMotionPlanner:
         # get tcp poses
         tcp_left_pose = self.getEndEffectorPose_leftArm(self.planner_robot)
         tcp_right_pose = self.getEndEffectorPose_rightArm(self.planner_robot)
-        self.planner_robot.setConfig(init_config)
+        #self.planner_robot.setConfig(init_config)
 
         return goal_config, tcp_left_pose, tcp_right_pose, "True"
        
 
 
-    def get_robot_goal_config_old(self, left_arm_target_pose=None, right_arm_target_pose=None):
+    def get_robot_goal_config_old(self, left_arm_target_pose=None, right_arm_target_pose=None, gazing=True):
         """
         Failsafe in case gazing or avoidance does not work as assumed.
         Sets the target pose for the left and/or right arm.
@@ -762,6 +781,10 @@ class RepairMotionPlanner:
             goal_config, left_tcp, right_tcp, info = self.find_ik(ik_objs, num_tries = NUM_IK_TRIES)
         except RuntimeError as e:
             raise RuntimeError(e)
+        
+        torso_link = self.planner_robot.link("torso_1")
+        R, t = torso_link.getTransform()
+        print("TORSO TRANSFORM: ", t)
         
         return goal_config, left_tcp, right_tcp, info
     
@@ -994,7 +1017,7 @@ class RepairMotionPlanner:
         
         return goal_config, left_tcp, right_tcp, info
 
-    def sample_away_from_xy(self, position, min_xy_distance=0.15, xy_range=0.3, z_range=(-0.05, 0.05)):
+    def sample_away_from_xy(self, position, min_xy_distance=0.15, xy_range=0.3, z_range=(0.05, 0.3)):
         """
         Sample 3D poses that are at least `min_xy_distance` away in x and y from the given position.
 
@@ -1019,6 +1042,8 @@ class RepairMotionPlanner:
                 continue
 
             dz = np.random.uniform(z_range[0], z_range[1])
+            if(pz + dz <= 1.20):
+                continue
 
             sampled = [px + dx, py + dy, pz + dz]
             return sampled
@@ -1392,6 +1417,50 @@ class RepairMotionPlanner:
 
 
         return traj_msg
+    
+
+    def add_sand_to_env(self, margin=0.01):
+        """
+        obb: Open3D OrientedBoundingBox, e.g. pcl_base_link.get_minimal_oriented_bounding_box()
+        """
+        # Dimensions and pose from Open3D OBB
+        w, h, d = 1.0, 2.5, 0.005
+        Rw = np.eye(3)   # 3x3 rotation (world)
+        tw = np.array([0, 0, 1.08])
+
+        # Origin-centered box primitive (local axes)
+        geom = create.primitives.box(w, h, d, type="GeometricPrimitive")
+        try: geom.setCollisionMargin(margin)
+        except Exception: pass
+
+        # Add as a rigid object and place at OBB pose
+        obj = self.world.makeRigidObject("Sand")
+        obj.geometry().set(geom)
+        obj.setTransform(so3.from_matrix(Rw.tolist()), tw.tolist())
+        obj.appearance().setColor(1, 0, 0, 0.35)  # translucent red
+
+        # Optional visualization
+        try: vis.add("Sand", obj)
+        except Exception: pass
+
+        return obj
+
+
+
+    def move_sand_x(self, pose):
+        """Moves the terrain 'shelf' by +dx meters along the x-axis."""
+        vis.lock()
+        R = se3.identity()[0]  # 3x3 rotation matrix
+        dx = pose.position.x
+        if dx == 0:
+            t = [0, 0, 1.08] 
+        else:
+            t = [dx, 0, 0] 
+        self.sand_plane.setTransform(R, t)
+        vis.unlock()
+        return True   
+    
+
         
 
         

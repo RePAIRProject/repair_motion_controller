@@ -9,6 +9,7 @@ from std_msgs.msg import Float64
 from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectory
 from xbot_msgs.msg import JointCommand
+from klampt.math import so3, se3
 
 from trajectory_msgs.msg import JointTrajectoryPoint
 from control_msgs.msg import FollowJointTrajectoryAction, FollowJointTrajectoryGoal
@@ -134,6 +135,18 @@ class RepairMotionControlServer:
             status = "Goal is received for Both Arms."
             self.set_status_feedback(status)
             rospy.loginfo(status)
+        elif goal.arm == 88:
+            status = "Moving Sand in Klampt"
+            self.set_status_feedback(status)
+            rospy.loginfo(status)
+            # Call the move_to_home() method
+            self.move_sand_x(goal.target_pose_left)
+            status = "Removed Sand from klampt"
+            self.set_status_feedback(status)
+            rospy.logwarn(status)
+            self._result.success = True
+            self._as.set_succeeded(self._result)
+            return  # Exit early since we are handling this special case
         elif goal.arm == 99:
             status = "Goal is received for Home position."
             self.set_status_feedback(status)
@@ -207,6 +220,8 @@ class RepairMotionControlServer:
                 self._planner.execute_planned_path_in_vis(interpolate_path)
             Thread(target=lambda: vis_traj_animate()).start()
             # vis_traj_animate()
+        
+        input("Press Enter to continue after visualization...")
 
 
         # move robot to goal
@@ -398,6 +413,10 @@ class RepairMotionControlServer:
         if self._planner.moveToGhost:
             self._planner.moveToGhost = False
             self.move_to_ghost()
+
+    def move_sand_x(self, pose):
+        """Moves the terrain 'sand' by +dx meters along the x-axis."""
+        self._planner.move_sand_x(pose)
 
 
     def move_to_home(self):

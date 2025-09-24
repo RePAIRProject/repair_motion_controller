@@ -84,4 +84,8 @@
       <display color="0.8 0.8 0.8" />
     </terrain>
 
+  <!-- <terrain file="cube.off" scale="1.0 2.5 0.005" translation="-0.5 -1.25 1.05" name="Sand">
+    <display color="0.6 0.4 0.23" />
+  </terrain> -->
+
 </world>
