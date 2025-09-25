@@ -27,6 +27,8 @@ from geometry_msgs.msg import Pose
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
 from threading import Thread
+import tf2_ros
+import geometry_msgs
 
 vis.init("GLUT")
 
@@ -151,8 +153,21 @@ class RepairMotionPlanner:
         self.__set_robot_color()
         if self.show_vis:
             self.__visualize()
-
+        #self.print_robot_info()
         self.__loginfo("RepairMotionPlanner is initialized")
+
+    def print_robot_info(self):
+        print("Robot info:")
+        print("  Name:", self.planner_robot.getName())
+        print("  Links:", self.planner_robot.numLinks())
+        print("  Link names:")
+        for i in range(self.planner_robot.numLinks()):
+            print(f"    {i}: {self.planner_robot.link(i).getName()}")
+        print("  Joints:", self.planner_robot.numDrivers())
+        print("  Joint names:")
+        for i in range(self.planner_robot.numDrivers()):
+            print("    ", self.planner_robot.driver(i).getName())
+
 
     def __loginfo(self, info):
         print(f"[INFO] [{rospy.Time.now().secs}.{rospy.Time.now().nsecs}]: {info}")
@@ -389,20 +404,20 @@ class RepairMotionPlanner:
         rightEE = self.getEndEffectorPose_rightArm(self.real_robot)
         return leftEE, rightEE
     
-    def print_robot_info(self):
-        """ 
-        Prints the links and joint information of the robot.
-        """
-        self.__loginfo("Robot info:")
-        self.__loginfo("\t  Name:", self.planner_robot.getName())
-        self.__loginfo("\t  Links:", self.planner_robot.numLinks())
-        self.__loginfo("\t  Link names:")
-        for i in range(self.planner_robot.numLinks()):
-            self.__loginfo(f"\t    {i}: {self.planner_robot.link(i).getName()}")
-        self.__loginfo("\t  Joints:", self.planner_robot.numDrivers())
-        self.__loginfo("\t  Joint names:")
-        for i in range(self.planner_robot.numDrivers()):
-            self.__loginfo("\t    ", self.planner_robot.driver(i).getName(), self.planner_robot.driver(i).getLimits())
+    # def print_robot_info(self):
+    #     """ 
+    #     Prints the links and joint information of the robot.
+    #     """
+    #     self.__loginfo("Robot info:")
+    #     self.__loginfo("\t  Name:", self.planner_robot.getName())
+    #     self.__loginfo("\t  Links:", self.planner_robot.numLinks())
+    #     self.__loginfo("\t  Link names:")
+    #     for i in range(self.planner_robot.numLinks()):
+    #         self.__loginfo(f"\t    {i}: {self.planner_robot.link(i).getName()}")
+    #     self.__loginfo("\t  Joints:", self.planner_robot.numDrivers())
+    #     self.__loginfo("\t  Joint names:")
+    #     for i in range(self.planner_robot.numDrivers()):
+    #         self.__loginfo("\t    ", self.planner_robot.driver(i).getName(), self.planner_robot.driver(i).getLimits())
     
     def filterJointConfigFromFullConfig(self, full_config):
         """
@@ -543,12 +558,13 @@ class RepairMotionPlanner:
         """
         return ik.objective(link, ref=None, R=goal_rot, t=goal_pos)
 
-    # def find_ik(
+    # def find_ik_fast(
     #         self, 
     #         objectives: List[IKObjective], 
     #         num_tries: int = 5,
     #         moveable_subset=[],
-    #         oneshot=True
+    #         oneshot=True,
+    #         solve_nearby=True
     #     ) ->Tuple[List[float], Pose, Pose, str]:
     #     """  
     #     Attempts to solve the inverse kinematics (IK) problem for the given objectives and start configuration.
@@ -607,6 +623,95 @@ class RepairMotionPlanner:
         
     #     return goal_config, tcp_left_pose, tcp_right_pose, info
 
+
+    def find_ik_fast(
+            self, 
+            objectives: List[IKObjective], 
+            num_tries: int = 5,
+            moveable_subset=[],
+            oneshot=True,
+            solve_nearby=True
+        ) -> Tuple[List[float], Pose, Pose, str]:
+        """  
+        Attempts to solve IK quickly with some robustness:
+        - multiple randomized seeds
+        - adaptive tolerance schedule
+        - feasibility filtering
+        - chooses solution closest to start configuration
+        """
+
+        solver = IKSolver(self.planner_robot)
+        solver.setMaxIters(2000)
+
+        if moveable_subset:
+            solver.setActiveDofs(moveable_subset)
+
+        for obj in objectives:
+            solver.add(obj)
+
+        init_config = self.planner_robot.getConfig()
+        best_conf, best_dist = None, float("inf")
+        info = ""
+
+        # tolerance schedule, from strict to looser
+        tolerances = [1e-4, 5e-4, 1e-3, 5e-3, 1e-2]
+        factor = 1.2
+        maxDeviation=0.3
+        for i in range(num_tries):
+            # use either init config or a perturbed one
+            # if i == 0:
+            #     self.planner_robot.setConfig(init_config)
+            # else:
+            #     qrand = [qi + random.uniform(-0.05, 0.05) for qi in init_config]
+            #     self.planner_robot.setConfig(qrand)
+
+            # tol = tolerances[min(i, len(tolerances)-1)]
+            solver.setTolerance(1e-4)
+            dofs = solver.getActiveDofs()
+            q = self.planner_robot.getConfig()
+            qmin,qmax = self.planner_robot.getJointLimits()
+            for d in dofs:
+                qmin[d] = max(qmin[d],q[d]-maxDeviation)
+                qmax[d] = min(qmax[d],q[d]+maxDeviation)
+            solver.setJointLimits(qmin,qmax)
+            solver.setBiasConfig(q)
+
+            # try solve() first, fall back to solve_nearby if requested
+            success = solver.solve()
+            # if not success and solve_nearby:
+            #     success = ik.solve_nearby(
+            #         objectives,
+            #         maxDeviation=0.15,
+            #         iters=200,
+            #         tol=1e-3,
+            #         feasibilityCheck=self.is_feasible,
+            #         numRestarts=2,
+            #         activeDofs=moveable_subset if moveable_subset else None,
+            #     )
+            maxDeviation*= factor
+            if success and self.is_feasible():
+                qsol = self.planner_robot.getConfig()
+                dist = vectorops.distance(qsol, init_config)
+                if dist < best_dist:
+                    best_conf, best_dist = qsol, dist
+                    info = f"IK succeeded on try {i+1} with tolerance 1e-3"
+
+        if best_conf is None:
+            error_msg = f"IK failed after {num_tries} attempts. Residual: {solver.getResidual()}"
+            if oneshot:
+                raise RuntimeError(error_msg)
+            else:
+                return None, None, None, "False"
+
+        # set robot to the best found config
+        self.planner_robot.setConfig(best_conf)
+
+        # get tcp poses
+        tcp_left_pose = self.getEndEffectorPose_leftArm(self.planner_robot)
+        tcp_right_pose = self.getEndEffectorPose_rightArm(self.planner_robot)
+
+        return best_conf, tcp_left_pose, tcp_right_pose, info
+
     def is_feasible(self):
         # return True only if *no* self‐collisions are present
         geoms = [g for _,g in self.__collider.geomList]
@@ -642,11 +747,14 @@ class RepairMotionPlanner:
         Raises:
             RuntimeError: If IK fails after the specified number of tries.
         """
-        
+        goal_config, tcp_left_pose, tcp_right_pose, info = self.find_ik_fast(objectives, num_tries, moveable_subset, oneshot, solve_nearby)
+        if goal_config is None:
+            return goal_config, tcp_left_pose, tcp_right_pose, info
+        return goal_config, tcp_left_pose, tcp_right_pose, info
         active_dofs = moveable_subset if(moveable_subset != []) else None
         solutions = []
         success = False
-        deviation = 0.5
+        deviation = 0.3
         ik_max_iter = 0
         init_config = self.planner_robot.getConfig()
         for n in range(num_tries):
@@ -658,12 +766,12 @@ class RepairMotionPlanner:
                         objectives,
                         maxDeviation=deviation,
                         iters=2000,
-                        #tol=1e-2,
+                        tol=1e-3,
                         activeDofs = active_dofs,
                         feasibilityCheck=self.is_feasible,
-                        numRestarts=1,      # nearby: stick to current seed and small radius
+                        numRestarts=5,      # nearby: stick to current seed and small radius
                     )
-                    deviation *= 1.1
+                    deviation *= 1.2
                 else:
                     success = ik.solve_global(objectives, 
                                         iters=500,           # increase per‑trial iterations
@@ -676,6 +784,7 @@ class RepairMotionPlanner:
                 
                 if success:
                     solutions.append(self.planner_robot.getConfig())
+            print("FOUND ik solution at iteration: ", ik_max_iter)
 
         final_solutions = []
         if solutions != []:
@@ -1358,6 +1467,27 @@ class RepairMotionPlanner:
         
         # get the path from the plan (optimal path)
         path = plan.getPath()
+
+        last_config = path[-1]
+
+        # --- Convert Klampt config -> SE3 pose ---
+        # Assuming 'plan.robot' exists and is the robot model
+        old_config = self.planner_robot.getConfig()
+
+        self.planner_robot.setConfig(last_config)
+
+        # Example: using robot base link (index 0) or specific link
+        link_index = 0  # change this to the link of interest
+        T = self.planner_robot.link("right_hand_v1_2_research_grasp_link").getTransform()  # (R, t)
+
+        # Convert to ROS Pose
+        R, t = T
+        q = so3.quaternion(R)
+        q = np.roll(q, 1)
+        new = list(t) + list(q)
+        print("LAST MILESTONE: ", new)
+        self.publish_tf_np(new, child_frame="last_milestone_klampt")
+        self.planner_robot.setConfig(old_config)
         
         # filter only joint values of the path and make it a numpy array
         path = np.array(self.filter_path(path))
@@ -1370,7 +1500,7 @@ class RepairMotionPlanner:
         milestone_distance = np.abs(np.diff(path, axis=0))
         max_time_needed_for_milestone = np.max(milestone_distance / joint_vel_upper_limits, axis=1) 
         # add 2.0s of threshold to max_time_needed_for_milestone to slow down if speed is super fast!
-        max_time_needed_for_milestone += 5.0
+        max_time_needed_for_milestone += 10.0
 
         # Total time needed for full transition
         total_time_needed = np.sum(max_time_needed_for_milestone)   # add a threshold of 2.0 seconds 
@@ -1393,6 +1523,8 @@ class RepairMotionPlanner:
             # interpolate waypoints
             segment_waypoints = np.linspace(start, end, num=num_waypoints, endpoint=True)
             waypoints.append(segment_waypoints)
+
+        print("LAST WAYPOINT: ", np.array(waypoints)[-1, -1])
 
         # Flatten the list of waypoints
         waypoints = np.round(np.vstack(waypoints), 8)
@@ -1461,7 +1593,27 @@ class RepairMotionPlanner:
         return True   
     
 
-        
+    def publish_tf_np(self, pose, par_frame="world", child_frame="goal_frame"):
+        broadcaster = tf2_ros.StaticTransformBroadcaster()
+        static_transformStamped = geometry_msgs.msg.TransformStamped()
+
+        static_transformStamped.header.stamp = rospy.Time.now()
+        static_transformStamped.header.frame_id = par_frame
+        static_transformStamped.child_frame_id = child_frame
+
+        static_transformStamped.transform.translation.x = float(pose[0])
+        static_transformStamped.transform.translation.y = float(pose[1])
+        static_transformStamped.transform.translation.z = float(pose[2])
+
+        static_transformStamped.transform.rotation.x = float(pose[3])
+        static_transformStamped.transform.rotation.y = float(pose[4])
+        static_transformStamped.transform.rotation.z = float(pose[5])
+        static_transformStamped.transform.rotation.w = float(pose[6])
+
+        broadcaster.sendTransform(static_transformStamped)
+        rospy.sleep(1)
+
+        return True
 
         
 

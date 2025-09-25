@@ -320,11 +320,6 @@ class RepairMotionControlServer:
         status = "Sending waypoints to the trajectory controllers..."
         # goal.trajectory = second_trajectory
         self._fjt_client.send_goal(goal, feedback_cb=self.fjt_feedback_cb)
-        # msg = JointCommand()
-        # msg.name = [key for key, _ in home_joint_config.items()]
-        # msg.position = [val+0.2 for _, val in home_joint_config.items()]
-        # msg.ctrl_mode = [1] * len(msg.position)
-        # self._xbot_cmd_pub.publish(msg)
 
         # wait for the result
         self._fjt_client.wait_for_result()
