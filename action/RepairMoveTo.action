@@ -3,6 +3,8 @@ uint8 arm             # 0 for left, 1 for right, 2 for both
 float32 target_time   # time duration to get to the target pose
 geometry_msgs/Pose target_pose_left  # Grasp target pose
 geometry_msgs/Pose target_pose_right # Release target pose
+float32[] joint_values
+std_msgs/Float32MultiArray path
 
 ---
 # Result definition
@@ -11,6 +13,8 @@ float32 best_path_length
 uint32  num_waypoints
 uint32  num_milestones
 std_msgs/Duration duration 
+std_msgs/Float32MultiArray path
+
 
 
 

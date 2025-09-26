@@ -9,12 +9,11 @@ from std_msgs.msg import Float64
 from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectory
 from xbot_msgs.msg import JointCommand
-from klampt.math import so3, se3
 
 from trajectory_msgs.msg import JointTrajectoryPoint
 from control_msgs.msg import FollowJointTrajectoryAction, FollowJointTrajectoryGoal
-
-
+from std_msgs.msg import Float32MultiArray, MultiArrayDimension
+import numpy as np
 import time
 import os
 
@@ -37,8 +36,6 @@ class RepairMotionControlServer:
         
         self._current_joint_config_dict = {} 
         self._joint_names = JOINT_NAMES
-        
-        self.gazing = False
 
         # parameters
         enable_vis_param = rospy.search_param('enable_vis')
@@ -116,7 +113,7 @@ class RepairMotionControlServer:
         self.rightEE_pub.publish(rightEE)
         
         
-    def action_executor(self, goal: RepairMoveToGoal):
+    def action_executor(self, goal):
         # Validate the selected arm for planning:
         rospy.loginfo("TESTINGS")
         if goal.arm == 0:
@@ -135,24 +132,26 @@ class RepairMotionControlServer:
             status = "Goal is received for Both Arms."
             self.set_status_feedback(status)
             rospy.loginfo(status)
-        elif goal.arm == 88:
-            status = "Moving Sand in Klampt"
-            self.set_status_feedback(status)
-            rospy.loginfo(status)
-            # Call the move_to_home() method
-            self.move_sand_x(goal.target_pose_left)
-            status = "Removed Sand from klampt"
-            self.set_status_feedback(status)
-            rospy.logwarn(status)
-            self._result.success = True
-            self._as.set_succeeded(self._result)
-            return  # Exit early since we are handling this special case
         elif goal.arm == 99:
             status = "Goal is received for Home position."
             self.set_status_feedback(status)
             rospy.loginfo(status)
             # Call the move_to_home() method
             self.move_to_home()
+            return  # Exit early since we are handling this special case
+        elif goal.arm == 100:
+            status = "Goal is received for custom joint position."
+            self.set_status_feedback(status)
+            rospy.loginfo(status)
+            # Call the move_to_home() method
+            self.move_to_joint_pose(goal.joint_values)
+            return  # Exit early since we are handling this special case
+        elif goal.arm == 103:
+            status = "Goal is received for executing path."
+            self.set_status_feedback(status)
+            rospy.loginfo(status)
+            # Call the move_to_home() method
+            self.execute_path(goal.path)
             return  # Exit early since we are handling this special case
         else:
             status = "Invalid Goal is received: goal.arm must be 0, 1, or 2"
@@ -172,7 +171,7 @@ class RepairMotionControlServer:
 
         try: 
             self.set_status_feedback("Start planning...")
-            plan = self._planner.get_plan_to_cartesian_goal(goal.target_pose_left, goal.target_pose_right, gazing=self.gazing)
+            plan = self._planner.get_plan_to_cartesian_goal(goal.target_pose_left, goal.target_pose_right)
             self.set_status_feedback("Planning is successfully completed.")
             print("stats: ")
             print(plan.getStats())
@@ -220,10 +219,9 @@ class RepairMotionControlServer:
                 self._planner.execute_planned_path_in_vis(interpolate_path)
             Thread(target=lambda: vis_traj_animate()).start()
             # vis_traj_animate()
-        
+
         input("Press Enter to continue after visualization...")
-
-
+        
         # move robot to goal
         status = "Moving robot to the goal config..."
         self.set_status_feedback(status)
@@ -240,7 +238,161 @@ class RepairMotionControlServer:
             self._result.num_waypoints = int(len(traj_msg.points))
             self._result.num_milestones = int(stats['numMilestones'])
             self._result.duration.data = traj_msg.points[-1].time_from_start
+            path_msg = self.array_to_multiarray(np.array(path))
+            self._result.path = path_msg
             
+            self._as.set_succeeded(self._result)
+
+        else:
+            status = "Robot failed to reach the goal."
+            self.set_status_feedback(status)
+            rospy.logwarn(status)
+            self._result.success = False
+            self._as.set_succeeded(self._result)
+
+        print("\n################### END PLAN EXECUTION ###################\n\n")
+
+    def execute_path(self, path):
+        path=self.multiarray_to_array(path)
+        start_config = self._planner.planner_robot.getConfig()
+
+        # get the joint trajectory
+        traj_msg = self._planner.get_ros_joint_trajectory_from_plan(target_time=5, joint_update_rate=200, path=path)
+
+        
+        if traj_msg is None:
+            status = "Faield to create the JointTrajectory for the plan."
+            rospy.logwarn(status)
+            self.set_status_feedback(f"{status}")
+            self.terminate_planning()
+            self._planner.planner_robot.setConfig(start_config)
+            return
+
+        status = "JointTrajectory for the plan is created!"
+        self.set_status_feedback(f"{status}")
+        rospy.loginfo(status)
+
+
+        print("\n################### END PLANNING ###################\n")
+
+
+        print("\n################### START PLAN EXECUTION ###################\n")
+
+        # execute the motion in vis
+        if self._is_vis_enable:
+            def vis_traj_animate():
+                interpolate_path = self._planner.get_interpolate_path(path, num_waypoints=100)
+                self._planner.execute_planned_path_in_vis(interpolate_path)
+            Thread(target=lambda: vis_traj_animate()).start()
+            # vis_traj_animate()
+
+        input("Press Enter to continue after visualization...")
+        
+        # move robot to goal
+        status = "Moving robot to the goal config..."
+        self.set_status_feedback(status)
+        rospy.loginfo(status)
+
+        if self.move_robot_to_goal(traj_msg):
+            status = "Robot is moved to the goal config successfully."
+            self.set_status_feedback(status)
+            rospy.loginfo(status)
+            self._result.success = True
+            
+            self._result.best_path_length = float(0)
+            self._result.num_waypoints = int(len(traj_msg.points))
+            self._result.num_milestones = int(0)
+            self._result.duration.data = traj_msg.points[-1].time_from_start
+            path_msg = self.array_to_multiarray(np.array(path))
+            self._result.path = path_msg
+            
+            self._as.set_succeeded(self._result)
+
+        else:
+            status = "Robot failed to reach the goal."
+            self.set_status_feedback(status)
+            rospy.logwarn(status)
+            self._result.success = False
+            self._as.set_succeeded(self._result)
+
+        print("\n################### END PLAN EXECUTION ###################\n\n")
+
+    def move_to_joint_pose(self, joint_states):
+        start_config = self._planner.planner_robot.getConfig()
+
+        self._planner.update_planner_robot_joint_states(joint_states)
+        goal_config = self._planner.planner_robot.getConfig()
+        self._planner.planner_robot.setConfig(start_config)
+        try: 
+            self.set_status_feedback("Start planning...")
+            plan = self._planner.get_plan_to_joint_goal_short(start_config, goal_config)
+            self.set_status_feedback("Planning is successfully completed.")
+            print("stats: ")
+            print(plan.getStats())
+
+        except (RuntimeError, ValueError) as e:
+            rospy.logerr(f"{e}")
+            self.set_status_feedback(f"{e}")
+            self.terminate_planning()
+            self._planner.planner_robot.setConfig(start_config)
+            return
+        
+        # get the path from the plan
+        path = plan.getPath()
+        print(type(path))
+        # get the statistics of the plan
+        stats = plan.getStats()
+
+        # get the joint trajectory
+        traj_msg = self._planner.get_ros_joint_trajectory_from_plan(plan, 5, joint_update_rate=200)
+
+        
+        if traj_msg is None:
+            status = "Faield to create the JointTrajectory for the plan."
+            rospy.logwarn(status)
+            self.set_status_feedback(f"{status}")
+            self.terminate_planning()
+            self._planner.planner_robot.setConfig(start_config)
+            return
+
+        status = "JointTrajectory for the plan is created!"
+        self.set_status_feedback(f"{status}")
+        rospy.loginfo(status)
+
+
+        print("\n################### END PLANNING ###################\n")
+
+
+        print("\n################### START PLAN EXECUTION ###################\n")
+
+        # execute the motion in vis
+        if self._is_vis_enable:
+            def vis_traj_animate():
+                interpolate_path = self._planner.get_interpolate_path(path, num_waypoints=100)
+                self._planner.execute_planned_path_in_vis(interpolate_path)
+            Thread(target=lambda: vis_traj_animate()).start()
+            # vis_traj_animate()
+
+        input("Press Enter to continue after visualization...")
+        
+        # move robot to goal
+        status = "Moving robot to the goal config..."
+        self.set_status_feedback(status)
+        rospy.loginfo(status)
+
+        if self.move_robot_to_goal(traj_msg):
+            status = "Robot is moved to the goal config successfully."
+            self.set_status_feedback(status)
+            rospy.loginfo(status)
+            rospy.loginfo(f"Plan stats: {stats}")
+            self._result.success = True
+            
+            self._result.best_path_length = float(stats['bestPathLength'])
+            self._result.num_waypoints = int(len(traj_msg.points))
+            self._result.num_milestones = int(stats['numMilestones'])
+            self._result.duration.data = traj_msg.points[-1].time_from_start
+            path_msg = self.array_to_multiarray(np.array(path))
+            self._result.path = path_msg
             self._as.set_succeeded(self._result)
 
         else:
@@ -409,10 +561,6 @@ class RepairMotionControlServer:
             self._planner.moveToGhost = False
             self.move_to_ghost()
 
-    def move_sand_x(self, pose):
-        """Moves the terrain 'sand' by +dx meters along the x-axis."""
-        self._planner.move_sand_x(pose)
-
 
     def move_to_home(self):
 
@@ -467,6 +615,7 @@ class RepairMotionControlServer:
                 self._planner.execute_planned_path_in_vis(interpolate_path)
             Thread(target=lambda: vis_traj_animate()).start()
 
+
         # move robot to goal
         status = "Moving robot to the goal config..."
         self.set_status_feedback(status)
@@ -480,7 +629,8 @@ class RepairMotionControlServer:
             self._result.num_waypoints = int(len(traj_msg.points))
             self._result.num_milestones = int(stats['numMilestones'])
             self._result.duration.data = traj_msg.points[-1].time_from_start
-
+            path_msg = self.array_to_multiarray(np.array(path))
+            self._result.path = path_msg
             self._as.set_succeeded(self._result)
 
         else:
@@ -575,11 +725,56 @@ class RepairMotionControlServer:
 
 
 
+    def array_to_multiarray(self, arr: np.ndarray) -> Float32MultiArray:
+        """
+        Convert a 2D numpy array into a ROS Float32MultiArray message.
+
+        Args:
+            arr (np.ndarray): Input array of shape (N, M)
+
+        Returns:
+            Float32MultiArray: ROS message with flattened data and layout
+        """
+        if arr.ndim != 2:
+            raise ValueError(f"Expected 2D array, got shape {arr.shape}")
+
+        msg = Float32MultiArray()
+        msg.data = arr.flatten().tolist()
+
+        # Define layout
+        msg.layout.dim.append(MultiArrayDimension(
+            label="rows",
+            size=arr.shape[0],
+            stride=arr.shape[0] * arr.shape[1]
+        ))
+        msg.layout.dim.append(MultiArrayDimension(
+            label="cols",
+            size=arr.shape[1],
+            stride=arr.shape[1]
+        ))
+
+        return msg
 
 
 
+    def multiarray_to_array(self, msg: Float32MultiArray) -> np.ndarray:
+            """
+            Convert a ROS Float32MultiArray message back into a 2D numpy array.
 
+            Args:
+                msg (Float32MultiArray): ROS message containing flattened data and layout
 
+            Returns:
+                np.ndarray: Reconstructed 2D numpy array
+            """
+            if len(msg.layout.dim) != 2:
+                raise ValueError("Expected 2 dimensions in layout, got {}".format(len(msg.layout.dim)))
+
+            rows = msg.layout.dim[0].size
+            cols = msg.layout.dim[1].size
+
+            arr = np.array(msg.data, dtype=np.float32).reshape(rows, cols)
+            return arr
 
 
 
