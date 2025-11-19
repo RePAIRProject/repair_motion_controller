@@ -153,6 +153,20 @@ class RepairMotionControlServer:
             # Call the move_to_home() method
             self.execute_path(goal.path)
             return  # Exit early since we are handling this special case
+        elif goal.arm == 105:
+            status = "Switching Active DOFs."
+            self.set_status_feedback(status)
+            rospy.loginfo(status)
+            # Call the move_to_home() method
+            self.switch_active_dofs()
+            return  # Exit early since we are handling this special case
+        elif goal.arm == 106:
+            status = "Reset Active DOFs."
+            self.set_status_feedback(status)
+            rospy.loginfo(status)
+            # Call the move_to_home() method
+            self.reset_active_dofs()
+            return  # Exit early since we are handling this special case
         else:
             status = "Invalid Goal is received: goal.arm must be 0, 1, or 2"
             self.set_status_feedback(status)
@@ -160,7 +174,6 @@ class RepairMotionControlServer:
             # Terminate goal execution
             self.terminate_planning()
             return
-        
         
 
         print("\n################### START PLANNING ###################\n")
@@ -191,7 +204,7 @@ class RepairMotionControlServer:
         stats = plan.getStats()
 
         # get the joint trajectory
-        traj_msg = self._planner.get_ros_joint_trajectory_from_plan(plan, goal.target_time, joint_update_rate=200)
+        traj_msg = self._planner.get_ros_joint_trajectory_from_plan(plan, 8, joint_update_rate=200)
 
         
         if traj_msg is None:
@@ -257,7 +270,7 @@ class RepairMotionControlServer:
         start_config = self._planner.planner_robot.getConfig()
 
         # get the joint trajectory
-        traj_msg = self._planner.get_ros_joint_trajectory_from_plan(target_time=5, joint_update_rate=200, path=path)
+        traj_msg = self._planner.get_ros_joint_trajectory_from_plan(target_time=8, joint_update_rate=200, path=path)
 
         
         if traj_msg is None:
@@ -344,7 +357,7 @@ class RepairMotionControlServer:
         stats = plan.getStats()
 
         # get the joint trajectory
-        traj_msg = self._planner.get_ros_joint_trajectory_from_plan(plan, 5, joint_update_rate=200)
+        traj_msg = self._planner.get_ros_joint_trajectory_from_plan(plan, 8, joint_update_rate=200)
 
         
         if traj_msg is None:
@@ -589,7 +602,7 @@ class RepairMotionControlServer:
         path = plan.getPath()
         stats = plan.getStats()
 
-        traj_msg = self._planner.get_ros_joint_trajectory_from_plan(plan, 5.0, joint_update_rate=100)
+        traj_msg = self._planner.get_ros_joint_trajectory_from_plan(plan, 8.0, joint_update_rate=100)
 
         if traj_msg is None:
             status = "Faield to create the JointTrajectory for the plan."
@@ -642,7 +655,27 @@ class RepairMotionControlServer:
         
         print("\n################### END PLAN EXECUTION ###################\n\n")
 
+    def reset_active_dofs(self):
+        self._planner.active_dofs = [10, 11, 76, 77, 78, 79, 80, 81, 82]
 
+        self._result.success = True
+        self._as.set_succeeded(self._result)
+
+        print(f" Active DOFs reseted to {self._planner.active_dofs}")
+
+    def switch_active_dofs(self):
+        old_dofs = self._planner.active_dofs
+        if self._planner.active_dofs == [10, 11, 76, 77, 78, 79, 80, 81, 82]:
+            self._planner.active_dofs = [11, 76, 77, 78, 79, 80, 81, 82]
+        else: 
+            print(f"Nothing to switch, Active DOFs are already {self._planner.active_dofs}")
+
+        self._result.success = True
+        self._as.set_succeeded(self._result)
+
+        print(f"switched Active DOFs from {old_dofs} to {self._planner.active_dofs}")
+
+    
 
     def move_to_ghost(self):
         goal_joint_config = self._planner.get_ghost_config()
@@ -670,7 +703,7 @@ class RepairMotionControlServer:
         path = plan.getPath()
         stats = plan.getStats()
 
-        traj_msg = self._planner.get_ros_joint_trajectory_from_plan(plan, 5.0, joint_update_rate=100)
+        traj_msg = self._planner.get_ros_joint_trajectory_from_plan(plan, 8.0, joint_update_rate=200)
 
         if traj_msg is None:
             status = "Faield to create the JointTrajectory for the plan."

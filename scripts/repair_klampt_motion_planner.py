@@ -120,6 +120,8 @@ class RepairMotionPlanner:
         self.endEffector_leftArm = self.planner_robot.link(LEFT_ARM_EE_LINK)
         self.endEffector_rightArm = self.planner_robot.link(RIGHT_ARM_EE_LINK)
 
+        self.active_dofs = [10, 11, 76, 77, 78, 79, 80, 81, 82]
+
         # 'configure robot's joints to initial configuration
         self.set_initial_joint_positions(self.planner_robot)
         self.set_initial_joint_positions(self.real_robot)
@@ -635,12 +637,16 @@ class RepairMotionPlanner:
         solver = IKSolver(self.planner_robot)
         for obj in objectives:
             solver.add(obj)
+        
+        solver.setActiveDofs(self.active_dofs)
+        self.__loginfo(f"Using Active DOFs: {solver.getActiveDofs()}")
+
         # try to solve IK multiple times to get a good solution
         # vary the tolerance each time
         info = ""
         res = False
         for i in range(num_tries):
-            solver.setTolerance(1e-4 * 10 * i)
+            solver.setTolerance(1e-4 * 1 * i)
             res = solver.solve()
             if res:
                 info = f"IK succeeded after {i + 1} tries with tolerance {solver.getTolerance()}"
@@ -801,7 +807,7 @@ class RepairMotionPlanner:
             settings = PLANNER_SETTINGS_SBL
 
         print("gc", goal_config)
-        plan = plan_to_config(self.world, self.planner_robot, goal_config, movingSubset="auto", **settings)
+        plan = plan_to_config(self.world, self.planner_robot, goal_config, equalityTolerance=0.0002, edgeCheckResolution=0.005, movingSubset="auto", **settings)
 
         if not plan:
             raise RuntimeError("Failed to generate a motion plan for given goal configuration.")
