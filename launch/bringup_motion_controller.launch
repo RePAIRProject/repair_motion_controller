@@ -5,7 +5,7 @@
 
     <!-- launch  the repair_motion_control_server.py -->
     <node name="repair_motion_controller" pkg="repair_motion_controller" type="repair_motion_control_server.py" output="screen" >
-        <param name="enable_vis" type="bool" value="false" /> 
+        <param name="enable_vis" type="bool" value="true" /> 
         <param name="single_step_execution" type="bool" value="false" />
         <param name="robot" type="string" value="real" />   <!--  value options: { dummy, real } -->
     </node>
