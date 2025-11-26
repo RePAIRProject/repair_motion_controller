@@ -38,6 +38,7 @@ class RepairMotionControlServer:
         self._joint_names = JOINT_NAMES
 
         # parameters
+        self.single_step_execution = rospy.get_param(rospy.search_param('single_step_execution'), False)
         enable_vis_param = rospy.search_param('enable_vis')
         self._is_vis_enable = rospy.get_param(enable_vis_param, True)
         self._robot = rospy.get_param(rospy.search_param('robot'), 'real')
@@ -62,6 +63,7 @@ class RepairMotionControlServer:
             )
 
         ## Subscribers for updating robot's joint states
+        self.current_joint_states = None
         self.robot_states_sub = rospy.Subscriber('/joint_states', JointState, self.update_current_joint_config)
 
         # xbot joint command publisher in set initial joint configuration
@@ -82,6 +84,11 @@ class RepairMotionControlServer:
         # set init robot config only when running with dummy. DO NOT DO IT WITH REAL ROBOT
         if self._robot == "dummy":
             self.set_xbot_init_joint_config()
+
+        self.prefered_planner_algorithm = "sbl"
+
+        while self.current_joint_states is None:
+            pass
 
 
     def set_xbot_init_joint_config(self):
@@ -105,7 +112,11 @@ class RepairMotionControlServer:
     def update_current_joint_config(self, joint_states:JointState):
         # get robot current joint configuration from robot_state publisher
         # set motion_planners real_robot configuration to received robot state
-        self._planner.update_real_robot_joint_states(joint_states.position)
+        nan_value = np.isnan(np.array(joint_states.position)).any()
+        if not nan_value:
+            self._planner.update_real_robot_joint_states(joint_states.position)
+            self.current_joint_states = joint_states.position
+        else:  rospy.loginfo("'/joint_states' encountered NAN value.")
         
         # publish updated end-effector poses
         leftEE, rightEE = self._planner.get_realRobot_EEs()
@@ -115,7 +126,6 @@ class RepairMotionControlServer:
         
     def action_executor(self, goal):
         # Validate the selected arm for planning:
-        rospy.loginfo("TESTINGS")
         if goal.arm == 0:
             status = "Goal is received for Left Arm."
             self.set_status_feedback(status)
@@ -154,18 +164,31 @@ class RepairMotionControlServer:
             self.execute_path(goal.path)
             return  # Exit early since we are handling this special case
         elif goal.arm == 105:
-            status = "Switching Active DOFs."
+            status = "remove translation Active DOFs."
             self.set_status_feedback(status)
             rospy.loginfo(status)
             # Call the move_to_home() method
-            self.switch_active_dofs()
+            self.remove_translation_active_dofs()
             return  # Exit early since we are handling this special case
         elif goal.arm == 106:
-            status = "Reset Active DOFs."
+            status = "Reset small Hand Active DOFs."
             self.set_status_feedback(status)
             rospy.loginfo(status)
             # Call the move_to_home() method
-            self.reset_active_dofs()
+            self.reset_active_dofs_small_hand()
+            return  # Exit early since we are handling this special case
+        elif goal.arm == 107:
+            status = "Reset small Wide Active DOFs."
+            self.set_status_feedback(status)
+            rospy.loginfo(status)
+            # Call the move_to_home() method
+            self.reset_active_dofs_wide_hand()
+            return  # Exit early since we are handling this special case
+        elif goal.arm == 108:
+            status = "Set single step execution."
+            self.set_status_feedback(status)
+            rospy.loginfo(status)
+            self.set_single_step_execution(goal.single_step_execution)
             return  # Exit early since we are handling this special case
         else:
             status = "Invalid Goal is received: goal.arm must be 0, 1, or 2"
@@ -179,15 +202,17 @@ class RepairMotionControlServer:
         print("\n################### START PLANNING ###################\n")
 
         # calulate the path to the goal from current robot config
-        start_config = self._planner.planner_robot.getConfig()
+        rospy.sleep(0.1)
+        start_config = self._planner.real_robot.getConfig()
+        self._planner.planner_robot.setConfig(start_config)
         # path, traj = self.get_path_to_cartesian_goal(start_config, goal)
 
         try: 
             self.set_status_feedback("Start planning...")
-            plan = self._planner.get_plan_to_cartesian_goal(goal.target_pose_left, goal.target_pose_right)
+            plan = self._planner.get_plan_to_cartesian_goal(goal.target_pose_left, goal.target_pose_right, planner=self.prefered_planner_algorithm)
             self.set_status_feedback("Planning is successfully completed.")
-            print("stats: ")
-            print(plan.getStats())
+            # print("stats: ")
+            # print(plan.getStats())
 
         except (RuntimeError, ValueError) as e:
             rospy.logerr(f"{e}")
@@ -204,7 +229,7 @@ class RepairMotionControlServer:
         stats = plan.getStats()
 
         # get the joint trajectory
-        traj_msg = self._planner.get_ros_joint_trajectory_from_plan(plan, 8, joint_update_rate=200)
+        traj_msg = self._planner.get_ros_joint_trajectory_from_plan(plan, 3, joint_update_rate=100, real_robot_current_config=self.current_joint_states)
 
         
         if traj_msg is None:
@@ -233,7 +258,8 @@ class RepairMotionControlServer:
             Thread(target=lambda: vis_traj_animate()).start()
             # vis_traj_animate()
 
-        input("Press Enter to continue after visualization...")
+        if self.single_step_execution:
+            input("Press Enter to continue after visualization...")
         
         # move robot to goal
         status = "Moving robot to the goal config..."
@@ -243,8 +269,8 @@ class RepairMotionControlServer:
         if self.move_robot_to_goal(traj_msg):
             status = "Robot is moved to the goal config successfully."
             self.set_status_feedback(status)
-            rospy.loginfo(status)
-            rospy.loginfo(f"Plan stats: {stats}")
+            # rospy.loginfo(status)
+            # rospy.loginfo(f"Plan stats: {stats}")
             self._result.success = True
             
             self._result.best_path_length = float(stats['bestPathLength'])
@@ -265,12 +291,22 @@ class RepairMotionControlServer:
 
         print("\n################### END PLAN EXECUTION ###################\n\n")
 
+    def set_single_step_execution(self, single_step:bool):
+        self.single_step_execution = single_step
+        status = f"Single step execution is set to {self.single_step_execution}."
+        self.set_status_feedback(status)
+
+        self._result.success = True
+        self._as.set_succeeded(self._result)
+
     def execute_path(self, path):
+        rospy.sleep(0.1)
         path=self.multiarray_to_array(path)
-        start_config = self._planner.planner_robot.getConfig()
+        start_config = self._planner.real_robot.getConfig()
+        self._planner.planner_robot.setConfig(start_config)
 
         # get the joint trajectory
-        traj_msg = self._planner.get_ros_joint_trajectory_from_plan(target_time=8, joint_update_rate=200, path=path)
+        traj_msg = self._planner.get_ros_joint_trajectory_from_plan(target_time=3, joint_update_rate=100, path=path, real_robot_current_config=self.current_joint_states)
 
         
         if traj_msg is None:
@@ -299,8 +335,9 @@ class RepairMotionControlServer:
             Thread(target=lambda: vis_traj_animate()).start()
             # vis_traj_animate()
 
-        input("Press Enter to continue after visualization...")
-        
+        if self.single_step_execution:
+            input("Press Enter to continue after visualization...")
+
         # move robot to goal
         status = "Moving robot to the goal config..."
         self.set_status_feedback(status)
@@ -331,17 +368,19 @@ class RepairMotionControlServer:
         print("\n################### END PLAN EXECUTION ###################\n\n")
 
     def move_to_joint_pose(self, joint_states):
-        start_config = self._planner.planner_robot.getConfig()
+        rospy.sleep(0.1)
+        start_config = self._planner.real_robot.getConfig()
+        self._planner.planner_robot.setConfig(start_config)
 
         self._planner.update_planner_robot_joint_states(joint_states)
         goal_config = self._planner.planner_robot.getConfig()
         self._planner.planner_robot.setConfig(start_config)
         try: 
             self.set_status_feedback("Start planning...")
-            plan = self._planner.get_plan_to_joint_goal_short(start_config, goal_config)
+            plan = self._planner.get_plan_to_joint_goal_short(start_config, goal_config, planner=self.prefered_planner_algorithm)
             self.set_status_feedback("Planning is successfully completed.")
-            print("stats: ")
-            print(plan.getStats())
+            # print("stats: ")
+            # print(plan.getStats())
 
         except (RuntimeError, ValueError) as e:
             rospy.logerr(f"{e}")
@@ -357,7 +396,7 @@ class RepairMotionControlServer:
         stats = plan.getStats()
 
         # get the joint trajectory
-        traj_msg = self._planner.get_ros_joint_trajectory_from_plan(plan, 8, joint_update_rate=200)
+        traj_msg = self._planner.get_ros_joint_trajectory_from_plan(plan, 3, joint_update_rate=100, real_robot_current_config=self.current_joint_states)
 
         
         if traj_msg is None:
@@ -386,7 +425,8 @@ class RepairMotionControlServer:
             Thread(target=lambda: vis_traj_animate()).start()
             # vis_traj_animate()
 
-        input("Press Enter to continue after visualization...")
+        if self.single_step_execution:
+            input("Press Enter to continue after visualization...")
         
         # move robot to goal
         status = "Moving robot to the goal config..."
@@ -396,8 +436,8 @@ class RepairMotionControlServer:
         if self.move_robot_to_goal(traj_msg):
             status = "Robot is moved to the goal config successfully."
             self.set_status_feedback(status)
-            rospy.loginfo(status)
-            rospy.loginfo(f"Plan stats: {stats}")
+            # rospy.loginfo(status)
+            # rospy.loginfo(f"Plan stats: {stats}")
             self._result.success = True
             
             self._result.best_path_length = float(stats['bestPathLength'])
@@ -578,7 +618,7 @@ class RepairMotionControlServer:
     def move_to_home(self):
 
         print("\n################### START PLANNING ###################\n")
-
+        rospy.sleep(0.1)
         start_config = self._planner.real_robot.getConfig()
         self._planner.planner_robot.setConfig(start_config)
         try:
@@ -586,7 +626,7 @@ class RepairMotionControlServer:
             goal_joint_config = [val for _, val in home_joint_config.items()]
 
 
-            plan = self._planner.get_plan_to_joint_goal(target_joint_config=goal_joint_config)
+            plan = self._planner.get_plan_to_joint_goal(target_joint_config=goal_joint_config, planner=self.prefered_planner_algorithm)
 
             self.set_status_feedback("Planning is successfully completed.")
             print("stats: ")
@@ -602,7 +642,7 @@ class RepairMotionControlServer:
         path = plan.getPath()
         stats = plan.getStats()
 
-        traj_msg = self._planner.get_ros_joint_trajectory_from_plan(plan, 8.0, joint_update_rate=100)
+        traj_msg = self._planner.get_ros_joint_trajectory_from_plan(plan, 3, joint_update_rate=100, real_robot_current_config=self.current_joint_states)
 
         if traj_msg is None:
             status = "Faield to create the JointTrajectory for the plan."
@@ -635,7 +675,7 @@ class RepairMotionControlServer:
         rospy.loginfo(status)
 
         if self.move_robot_to_goal(traj_msg):
-            rospy.loginfo(f"Plan stats: {stats}")
+            # rospy.loginfo(f"Plan stats: {stats}")
             self._result.success = True
 
             self._result.best_path_length = float(stats['bestPathLength'])
@@ -655,20 +695,26 @@ class RepairMotionControlServer:
         
         print("\n################### END PLAN EXECUTION ###################\n\n")
 
-    def reset_active_dofs(self):
-        self._planner.active_dofs = [10, 11, 76, 77, 78, 79, 80, 81, 82]
+    def reset_active_dofs_wide_hand(self):
+        self._planner.active_dofs = self._planner.active_base_dofs + self._planner.active_wide_dofs
 
         self._result.success = True
         self._as.set_succeeded(self._result)
 
-        print(f" Active DOFs reseted to {self._planner.active_dofs}")
+        # print(f" Active DOFs reseted to {self._planner.active_dofs}")
 
-    def switch_active_dofs(self):
+    def reset_active_dofs_small_hand(self):
+        self._planner.active_dofs = self._planner.active_base_dofs + self._planner.active_small_dofs
+
+        self._result.success = True
+        self._as.set_succeeded(self._result)
+
+        # print(f" Active DOFs reseted to {self._planner.active_dofs}")
+
+
+    def remove_translation_active_dofs(self):
         old_dofs = self._planner.active_dofs
-        if self._planner.active_dofs == [10, 11, 76, 77, 78, 79, 80, 81, 82]:
-            self._planner.active_dofs = [11, 76, 77, 78, 79, 80, 81, 82]
-        else: 
-            print(f"Nothing to switch, Active DOFs are already {self._planner.active_dofs}")
+        self._planner.active_dofs = self._planner.active_dofs[1:]
 
         self._result.success = True
         self._as.set_succeeded(self._result)
@@ -678,6 +724,7 @@ class RepairMotionControlServer:
     
 
     def move_to_ghost(self):
+        rospy.sleep(0.1)
         goal_joint_config = self._planner.get_ghost_config()
         start_config = self._planner.real_robot.getConfig()
         print("\n################### START PLANNING ###################\n")
@@ -687,11 +734,11 @@ class RepairMotionControlServer:
             
 
 
-            plan = self._planner.get_plan_to_joint_goal(target_robot_config=goal_joint_config)
+            plan = self._planner.get_plan_to_joint_goal(target_robot_config=goal_joint_config, planner=self.prefered_planner_algorithm)
 
             self.set_status_feedback("Planning is successfully completed.")
-            print("stats: ")
-            print(plan.getStats())
+            # print("stats: ")
+            # print(plan.getStats())
 
         except (RuntimeError, ValueError) as e:
             rospy.logerr(f"{e}")
@@ -703,7 +750,7 @@ class RepairMotionControlServer:
         path = plan.getPath()
         stats = plan.getStats()
 
-        traj_msg = self._planner.get_ros_joint_trajectory_from_plan(plan, 8.0, joint_update_rate=200)
+        traj_msg = self._planner.get_ros_joint_trajectory_from_plan(plan, 3.0, joint_update_rate=100, real_robot_current_config=self.current_joint_states)
 
         if traj_msg is None:
             status = "Faield to create the JointTrajectory for the plan."
@@ -735,7 +782,7 @@ class RepairMotionControlServer:
         rospy.loginfo(status)
 
         if self.move_robot_to_goal(traj_msg):
-            rospy.loginfo(f"Plan stats: {stats}")
+            # rospy.loginfo(f"Plan stats: {stats}")
             self._result.success = True
 
             self._result.best_path_length = float(stats['bestPathLength'])

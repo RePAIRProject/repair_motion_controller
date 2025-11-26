@@ -15,6 +15,10 @@ from klampt.plan.robotcspace import RobotCSpace
 from klampt.model.collide import WorldCollider
 from klampt.model.trajectory import *
 
+import toppra as ta
+import toppra.constraint as constraint
+import toppra.algorithm as algo
+
 # from repair_klampt_motion_planner import rotation_matrix_to_euler, euler_to_rotation_matrix
 import os
 import yaml
@@ -120,7 +124,17 @@ class RepairMotionPlanner:
         self.endEffector_leftArm = self.planner_robot.link(LEFT_ARM_EE_LINK)
         self.endEffector_rightArm = self.planner_robot.link(RIGHT_ARM_EE_LINK)
 
-        self.active_dofs = [10, 11, 76, 77, 78, 79, 80, 81, 82]
+        self.active_dofs = []
+        self.active_base_dofs = [10, 11]
+        self.active_wide_dofs = [26, 27, 28, 29, 30, 31, 32]
+        self.active_small_dofs = [76, 77, 78, 79, 80, 81, 82]
+
+        moveable_link_names = ["arm_2_1", "arm_2_2", "arm_2_3", "arm_2_4", "arm_2_5", "arm_2_6", "arm_2_7"]
+        moveable_subset = [self.planner_robot.link(name).index for name in moveable_link_names]
+        print("MOVABLE: ", moveable_subset)
+        moveable_link_names = ["arm_1_1", "arm_1_2", "arm_1_3", "arm_1_4", "arm_1_5", "arm_1_6", "arm_1_7"]
+        moveable_subset = [self.planner_robot.link(name).index for name in moveable_link_names]
+        print("MOVABLE: ", moveable_subset)
 
         # 'configure robot's joints to initial configuration
         self.set_initial_joint_positions(self.planner_robot)
@@ -643,8 +657,18 @@ class RepairMotionPlanner:
 
         # try to solve IK multiple times to get a good solution
         # vary the tolerance each time
+
         info = ""
         res = False
+
+        qmin, qmax = self.planner_robot.getJointLimits()
+        lo = qmin[10]
+        hi = qmax[10]
+
+        qmin[10] = lo - 1e-3
+        qmax[10] = hi + 1e-3
+        self.planner_robot.setJointLimits(qmin, qmax)
+
         for i in range(num_tries):
             solver.setTolerance(1e-4 * 1 * i)
             res = solver.solve()
@@ -653,8 +677,27 @@ class RepairMotionPlanner:
                 break
 
         if not res:
-            error_msg = f"IK failed after {num_tries} attempts. Target pose(s) might be invalid. \nResidual: {solver.getResidual()}"
-            raise RuntimeError(error_msg)
+            success = ik.solve_nearby(
+                objectives,
+                maxDeviation=0.15,
+                iters=1000,
+                tol=1e-3,
+                feasibilityCheck=self.is_feasible,
+                numRestarts=2,
+                activeDofs=self.active_dofs,
+            )  
+
+            if not success:
+                error_msg = f"IK failed after {num_tries} attempts. Target pose(s) might be invalid. \nResidual: {solver.getResidual()}"
+                raise RuntimeError(error_msg)
+            
+        lo = qmin[10]
+        hi = qmax[10]
+
+        qmin[10] = lo 
+        qmax[10] = hi
+        self.planner_robot.setJointLimits(qmin, qmax)
+
 
         goal_config = self.planner_robot.getConfig()
         # get tcp poses
@@ -799,15 +842,16 @@ class RepairMotionPlanner:
             tuple ((plan, planning_time, num_iters)):
         """
         if planner == 'sbl':
+            # print("Using SBL planner...")
             settings = PLANNER_SETTINGS_SBL
         elif planner == 'rrt':
+            # print("Using RRT planner...")
             settings = PLANNER_SETTINGS_RRT
         else:
             self.__logwarn(f"given planner {planner} is not a valid planner. Using sbl planner...")
             settings = PLANNER_SETTINGS_SBL
 
-        print("gc", goal_config)
-        plan = plan_to_config(self.world, self.planner_robot, goal_config, equalityTolerance=0.0002, edgeCheckResolution=0.005, movingSubset="auto", **settings)
+        plan = plan_to_config(self.world, self.planner_robot, goal_config, edgeCheckResolution=EDGE_CHECK_RESOLUTION, movingSubset="auto", **settings)
 
         if not plan:
             raise RuntimeError("Failed to generate a motion plan for given goal configuration.")
@@ -917,31 +961,31 @@ class RepairMotionPlanner:
             raise RuntimeError(error)
 
         # if feasible
-        feasibility_info = self.get_feasibility_info(self.planner_robot.getConfig())
-        self.__loginfo(f"\t- Feasibility info: {feasibility_info}")
-        print("---\n")
+        # feasibility_info = self.get_feasibility_info(self.planner_robot.getConfig())
+        # self.__loginfo(f"\t- Feasibility info: {feasibility_info}")
+        # print("---\n")
 
 
         # set robot config back to start config
         self.planner_robot.setConfig(start_config)
         
         # get the plan from start config to goal config
-        self.__loginfo("Getting plan to the traget...")
+        self.__loginfo("Getting plan to the target...")
         plan, dt, num_iters = self.get_plan_to_goal_config(goal_robot_config, planner=planner)
-        info = f"plan info; \n \
-                \t- path len: {len(plan.getPath())}\n \
-                \t- time to plan: {dt}\n \
-                \t- num_iters: {num_iters}  \
-                "
-        self.__loginfo(info)
-        print("---\n")
+        # info = f"plan info; \n \
+        #         \t- path len: {len(plan.getPath())}\n \
+        #         \t- time to plan: {dt}\n \
+        #         \t- num_iters: {num_iters}  \
+        #         "
+        # self.__loginfo(info)
+        # print("---\n")
 
         # validate plan to goal config
         if not self.validate_plan_to_goal_config(plan):
-            raise RuntimeError(f"Failed to plan a feasible path.\nPlanner stats: {plan.getStats()}")
+            raise RuntimeError(f"Failed to plan a feasible path.\n Planner stats: {plan.getStats()}")
 
 
-        self.__loginfo(f"Motion planning was successfully completed.\n")
+        self.__loginfo(f"Motion planning was successfully completed.")
 
         return plan
 
@@ -990,13 +1034,13 @@ class RepairMotionPlanner:
                 f"- right tcp quad: {right_tcp_quad}"
                 ]
         
-        for info_ in info:
-            self.__loginfo(info_)
-        print("---\n")
+        # for info_ in info:
+        #     self.__loginfo(info_)
+        # print("---\n")
 
 
 
-        self.__loginfo("\nChecking feasibility for the target configuration...")
+        self.__loginfo("Checking feasibility for the target configuration...")
         # check if the goal configuration is feasible
         self.planner_robot.setConfig(goal_config)
         if not self.is_robot_config_feasible(self.planner_robot.getConfig()):
@@ -1004,31 +1048,31 @@ class RepairMotionPlanner:
             raise RuntimeError(error)
 
         # if feasible
-        feasibility_info = self.get_feasibility_info(self.planner_robot.getConfig())
-        self.__loginfo(f"\t- Feasibility info: {feasibility_info}")
-        print("---\n")
+        # feasibility_info = self.get_feasibility_info(self.planner_robot.getConfig())
+        # self.__loginfo(f"\t- Feasibility info: {feasibility_info}")
+        # print("---\n")
 
 
         # set robot config back to start config
         self.planner_robot.setConfig(start_config)
         
         # get the plan from start config to goal config
-        self.__loginfo("Getting plan to the traget...")
+        self.__loginfo("Getting plan to the target...")
         plan, dt, num_iters = self.get_plan_to_goal_config(goal_config, planner=planner)
-        info = f"plan info; \n \
-                \t- path len: {len(plan.getPath())}\n \
-                \t- time to plan: {dt}\n \
-                \t- num_iters: {num_iters}  \
-                "
-        self.__loginfo(info)
-        print("---\n")
+        # info = f"plan info; \n \
+        #         \t- path len: {len(plan.getPath())}\n \
+        #         \t- time to plan: {dt}\n \
+        #         \t- num_iters: {num_iters}  \
+        #         "
+        # self.__loginfo(info)
+        # print("---\n")
 
         # validate plan to goal config
         if not self.validate_plan_to_goal_config(plan):
             raise RuntimeError(f"Failed to plan a feasible path.\nPlanner stats: {plan.getStats()}")
 
 
-        self.__loginfo(f"Motion planning was successfully completed.\n")
+        self.__loginfo(f"Motion planning was successfully completed.")
 
         return plan
     
@@ -1038,7 +1082,7 @@ class RepairMotionPlanner:
         goal_config,
         planner:str ='sbl'
     ) -> MotionPlan: 
-        self.__loginfo("\nChecking feasibility for the target configuration...")
+        self.__loginfo("Checking feasibility for the target configuration...")
         # check if the goal configuration is feasible
         self.planner_robot.setConfig(goal_config)
         if not self.is_robot_config_feasible(self.planner_robot.getConfig()):
@@ -1046,123 +1090,427 @@ class RepairMotionPlanner:
             raise RuntimeError(error)
 
         # if feasible
-        feasibility_info = self.get_feasibility_info(self.planner_robot.getConfig())
-        self.__loginfo(f"\t- Feasibility info: {feasibility_info}")
-        print("---\n")
+        # feasibility_info = self.get_feasibility_info(self.planner_robot.getConfig())
+        # self.__loginfo(f"\t- Feasibility info: {feasibility_info}")
+        # print("---\n")
 
 
         # set robot config back to start config
         self.planner_robot.setConfig(start_config)
         
         # get the plan from start config to goal config
-        self.__loginfo("Getting plan to the traget...")
+        self.__loginfo("Getting plan to the target...")
         plan, dt, num_iters = self.get_plan_to_goal_config(goal_config, planner=planner)
-        info = f"plan info; \n \
-                \t- path len: {len(plan.getPath())}\n \
-                \t- time to plan: {dt}\n \
-                \t- num_iters: {num_iters}  \
-                "
-        self.__loginfo(info)
-        print("---\n")
+        # info = f"plan info; \n \
+        #         \t- path len: {len(plan.getPath())}\n \
+        #         \t- time to plan: {dt}\n \
+        #         \t- num_iters: {num_iters}  \
+        #         "
+        # self.__loginfo(info)
+        # print("---\n")
 
         # validate plan to goal config
         if not self.validate_plan_to_goal_config(plan):
-            raise RuntimeError(f"Failed to plan a feasible path.\nPlanner stats: {plan.getStats()}")
+            raise RuntimeError(f"Failed to plan a feasible path.\n Planner stats: {plan.getStats()}")
 
 
-        self.__loginfo(f"Motion planning was successfully completed.\n")
+        self.__loginfo(f"Motion planning was successfully completed.")
 
         return plan
     
-    def get_ros_joint_trajectory_from_plan(\
-        self, 
-        plan:MotionPlan=None, 
-        target_time:float = 8.0, 
-        joint_update_rate:int=100,
-        path = None
-    ) -> JointTrajectory:
-        """  
-        Generates a ROS JointTrajectory message from a motion plan.
 
-        Parameters:
-            plan (MotionPlan): The motion plan containing the path to be converted into a JointTrajectory.
-            target_time (float): The desired time to complete the trajectory, in seconds. If this value is 
-                                less than the minimum required time based on velocity limits, it will be adjusted.
-            joint_update_rate (int): The rate at which joint positions are updated, in Hz.
 
-        Returns:
-            JointTrajectory: A ROS JointTrajectory message containing the waypoints and timing information.
-                            Returns None if the plan is invalid or not provided.
+    def sparse_path_to_dense_trajectory(self, sparse_path, dt=0.01):
         """
-        # validate the path
+        Time-parameterize a sparse joint path with TOPPRA and sample it
+        at fixed time steps dt.
+
+        sparse_path: list/array of joint vectors, shape (N, dof)
+        dt: sampling period in seconds
+        """
+        # Path parameter s in [0, 1]
+        s_grid = np.linspace(0, 1, len(sparse_path))
+        path = ta.SplineInterpolator(s_grid, np.array(sparse_path))
+
+        # Velocity / acceleration limits in TOPPRA format:
+        # arm_joint_[vel|acc]_limits shape: (dof, 2) with [v_min, v_max]
+        joint_vel_limits = self.get_robot_drivers_velocity_limits()
+        joint_vel_upper_limits = np.array([limit[1] for limit in joint_vel_limits ])
+        
+        arm_joint_acc_limits = [0.1 * limit for limit in joint_vel_upper_limits] #FIXME: set proper acceleration limits
+        
+        #vc = constraint.JointVelocityConstraint(np.array(self.arm_joint_vel_limits))
+        vc = constraint.JointVelocityConstraint(np.array(joint_vel_upper_limits))
+        #ac = constraint.JointAccelerationConstraint(np.array(self.arm_joint_acc_limits))
+        ac = constraint.JointAccelerationConstraint(np.array(arm_joint_acc_limits))
+
+        
+        #instance = algo.TOPPRA([vc, ac], path, solver_wrapper='seidel')
+        instance = algo.TOPPRA([vc], path, solver_wrapper='seidel')
+        traj = instance.compute_trajectory()
+
+        if traj is None:
+            self.__logwarn("TOPPRA failed to compute a trajectory.")
+            return None, None
+
+        # Duration of the optimal trajectory
+        try:
+            T = traj.duration       # most toppra versions
+        except AttributeError:
+            T = traj.get_duration() # fallback for older versions
+
+        # Sample at fixed rate dt
+        ts = np.arange(0.0, T + 1e-9, dt)
+        qs = traj.eval(ts)  # shape: (len(ts), dof)
+
+        return qs, ts
+    
+    def s_curve(self, p, p0=0.3, p1=0.8):
+        if p <= p0:
+            return 0.0
+        if p >= p1:
+            return 1.0
+        t = (p - p0) / (p1 - p0)  # normalize to [0,1]
+        return t*t*(3 - 2*t)      # smoothstep
+
+    def scale_from_ratio(self, r, r_max=3.0, scale_max=3.0, p0=0.3, p1=0.8):
+        # r >= 1
+        r_clamped = np.minimum(np.maximum(r, 1.0), r_max)
+        # normalize ratio -> progress p in [0,1]
+        p = (r_clamped - 1.0) / (r_max - 1.0)
+        # vectorize s_curve
+        s_vec = np.vectorize(lambda x: self.s_curve(x, p0, p1))
+        s = s_vec(p)
+        return 1.0 + s * (scale_max - 1.0)
+
+    # def get_ros_joint_trajectory_from_plan(
+    #         self, 
+    #         plan: MotionPlan = None, 
+    #         target_time: float = 15.0, 
+    #         joint_update_rate: int = 100,
+    #         path = None
+    #     ) -> JointTrajectory:
+
+    #     # validate the path
+    #     if plan is None and path is None:
+    #         self.__logwarn("Plan is None. Failed to create JointTrajectory!")
+    #         return None
+
+    #     # get the path from the plan (optimal path)
+    #     if path is None:
+    #         path = plan.getPath()
+
+    #     # filter only joint values of the path and make it a numpy array
+    #     path = np.array(self.filter_path(path))
+
+    #     # === NEW: Use TOPPRA on the full path ===
+    #     dt = 1.0 / float(joint_update_rate)
+    #     dense_q, ts = self.sparse_path_to_dense_trajectory(path, dt=dt)
+    #     if dense_q is None:
+    #         self.__logwarn("Failed to time-parameterize path with TOPPRA.")
+    #         return None
+
+    #     # duration from TOPPRA
+    #     T = ts[-1]
+
+    #     # Optionally enforce/adjust target_time:
+    #     # - If target_time < T: cannot go faster than constraints -> warn, keep T
+    #     # - If target_time > T: stretch timing (move slower) by scaling factor
+    #     if target_time < T:
+    #         self.__logwarn(
+    #             f"target_time {target_time:.4f}s is smaller than TOPPRA's minimum time {T:.4f}s. "
+    #             "Using TOPPRA's minimum time."
+    #         )
+    #         scale = 1
+    #     else:
+    #         scale_max = 15.0
+    #         scale = min(target_time / T, scale_max)
+    #         # scale = target_time / T
+    #         # print("scale: ", target_time / T)
+    #         # scale = min(self.scale_from_ratio(target_time / T, r_max=target_time, scale_max=10.0), target_time / T)
+    #         # print("new scale: ", scale)
+    #         # print("scale: ", target_time / T)
+    #         # scale_min = 1.0
+    #         # scale_max = 8.0
+    #         # scale = max(scale_min, min(target_time / T, scale_max))
+    #         # print("new scale: ", scale)
+
+
+    #     # === Build JointTrajectory message ===
+    #     jt = JointTrajectory()
+    #     jt.joint_names = [key for key, _ in home_joint_config.items()]
+
+    #     for q, t in zip(dense_q, ts):
+    #         pt = JointTrajectoryPoint()
+    #         pt.positions = q.tolist()
+    #         # velocities / accelerations are optional, but you can set them via traj.eval(ts, der=1/2)
+    #         # pt.velocities = v.tolist()
+    #         # pt.accelerations = a.tolist()
+    #         pt.time_from_start = rospy.Duration.from_sec(scale * t)
+    #         jt.points.append(pt)
+
+    #     # optional final hold point to reach target_time
+    #     # if hold_time > 1e-6:
+    #     #     last_pt = JointTrajectoryPoint()
+    #     #     last_pt.positions = dense_q[-1].tolist()
+    #     #     last_pt.time_from_start = rospy.Duration.from_sec(scale * T + hold_time)
+    #     #     jt.points.append(last_pt)
+
+    #     return jt
+
+    def smoothstep_5th_order(self, u):
+        return 10*u**3 - 15*u**4 + 6*u**5
+
+    def smooth_s_curve(self, u):
+        # 5th order polynomial with zero vel/acc at boundaries
+        return 6*u**5 - 15*u**4 + 10*u**3
+
+    
+
+    def get_ros_joint_trajectory_from_plan(
+        self,
+        plan: MotionPlan = None,
+        target_time: float = 3.0,
+        joint_update_rate: int = 100,
+        path=None,
+        real_robot_current_config = None,
+    ) -> JointTrajectory:
+        """
+        Generates a ROS JointTrajectory message from a motion plan with
+        a smooth SLOW–NORMAL–SLOW velocity profile (S-curve time scaling).
+
+        - The geometric path (joint positions) comes from the motion plan.
+        - We reparameterize the path by arc-length in joint space.
+        - We map time -> arc-length using an S-curve (slow at start/end).
+        """
+
+        # ------------------------------------------------------------------
+        # 1) Validate and extract the geometric path
+        # ------------------------------------------------------------------
         if plan is None and path is None:
             self.__logwarn("Plan is None. Failed to create JointTrajectory!")
             return None
-        
-        # get the path from the plan (optimal path)
+
         if path is None:
             path = plan.getPath()
-        
-        # filter only joint values of the path and make it a numpy array
-        path = np.array(self.filter_path(path))
 
-        # get joint velocity limits
+        # Path: list of configurations -> NxD numpy array (N waypoints, D joints)
+        path = np.array(self.filter_path(path), dtype=float)
+        if path.shape[0] < 2:
+            self.__logwarn("Path has fewer than 2 waypoints. Nothing to execute.")
+            return None
+
+        if real_robot_current_config is not None:
+            # prepend current robot config as starting point
+            new_row = np.array(real_robot_current_config, dtype=float).reshape(1, -1)
+            path = np.vstack([new_row, path])
+        
+        print("PATH", path)
+
+
+        n_waypoints, n_joints = path.shape
+
+        # ------------------------------------------------------------------
+        # 2) Velocity limits and *minimum* feasible time (no ramps)
+        # ------------------------------------------------------------------
         joint_vel_limits = self.get_robot_drivers_velocity_limits()
-        joint_vel_upper_limits = np.array([limit[1] for limit in joint_vel_limits ])
+        # take positive upper limits only
+        joint_vel_upper_limits = np.array([limit[1] for limit in joint_vel_limits], dtype=float)
 
-        # calculate distances and max times for each milestone transition
-        milestone_distance = np.abs(np.diff(path, axis=0))
-        max_time_needed_for_milestone = np.max(milestone_distance / joint_vel_upper_limits, axis=1) 
-        # add 2.0s of threshold to max_time_needed_for_milestone to slow down if speed is super fast!
-        max_time_needed_for_milestone += 5.0
+        # distance between consecutive path points, per joint
+        dq = np.abs(np.diff(path, axis=0))  # shape (N-1, D)
 
-        # Total time needed for full transition
-        total_time_needed = np.sum(max_time_needed_for_milestone)   # add a threshold of 2.0 seconds 
+        # time needed per segment so no joint exceeds its velocity limit
+        # t_i = max_j |dq_ij| / v_j
+        time_per_segment = np.max(dq / joint_vel_upper_limits, axis=1)  # (N-1,)
 
-        # Adjust target time if need
-        if target_time < total_time_needed :
-            warn = f"target_time {target_time:.4f}s is not sufficient to reach the goal. Minimum required time is {total_time_needed:.4f}s."
+        # minimal time to traverse path with constant speed along segments
+        min_time_no_ramp = np.sum(time_per_segment)
+
+        if target_time < min_time_no_ramp:
+            warn = (
+                f"target_time {target_time:.4f}s is not sufficient to reach the goal "
+                f"with given velocity limits. Minimum required time is {min_time_no_ramp:.4f}s."
+            )
             self.__logwarn(warn)
-            info = f"Setting target_time to {total_time_needed:.4f}s"
+            info = f"Setting target_time to {min_time_no_ramp:.4f}s"
             self.__loginfo(info)
-            target_time = total_time_needed
+            target_time = float(min_time_no_ramp)
 
-        # compute target times for each milestone
-        target_time_for_milestone = np.round(target_time * max_time_needed_for_milestone / total_time_needed, 2)
+        # ------------------------------------------------------------------
+        # 3) Arc-length parameterization of the path (in joint space)
+        # ------------------------------------------------------------------
+        # Use Euclidean distance in joint space as a simple "arc length"
+        segment_lengths = np.linalg.norm(np.diff(path, axis=0), axis=1)  # (N-1,)
+        cumulative_length = np.concatenate(([0.0], np.cumsum(segment_lengths)))  # (N,)
+        total_length = cumulative_length[-1]
 
-        # create waypoints
-        waypoints = []
-        for i, (start, end, time_needed) in enumerate(zip(path[:-1], path[1:], target_time_for_milestone)):
-            num_waypoints = int(time_needed * joint_update_rate)
-            # interpolate waypoints
-            segment_waypoints = np.linspace(start, end, num=num_waypoints, endpoint=True)
-            waypoints.append(segment_waypoints)
-        
-        print("LAST WAYPOINT: ", np.array(waypoints)[-1, -1])
+        if total_length == 0.0:
+            self.__logwarn("Total path length is zero. All waypoints identical.")
+            return None
 
-        # Flatten the list of waypoints
-        waypoints = np.round(np.vstack(waypoints), 8)
+        # Handle any zero-length duplicates to keep cumulative_length strictly increasing
+        # (np.interp needs increasing x values)
+        valid_mask = np.concatenate(([True], cumulative_length[1:] > cumulative_length[:-1]))
+        cumulative_length_valid = cumulative_length[valid_mask]
+        path_valid = path[valid_mask, :]
 
+        # ------------------------------------------------------------------
+        # 4) Time sampling and S-curve mapping: time -> path-parameter
+        # ------------------------------------------------------------------
+        # Number of trajectory samples (JointTrajectoryPoints)
+        num_samples = int(target_time * joint_update_rate) + 1  # +1 to include endpoint
+        if num_samples < 2:
+            num_samples = 2
 
+        # Uniform time grid
+        t = np.linspace(0.0, target_time, num_samples)
+        # --- Time scaling (robust, symmetric, guaranteed motion) ---
+        u = t / target_time
 
-        # generate time stamps
-        time_from_start = np.round(np.linspace(0, target_time, len(waypoints)), 4)
+        # 5th order S-curve
+        s_norm = 6*u**5 - 15*u**4 + 10*u**3
 
+        # OPTIONAL: adjust ramp duration
+        ramp_strength = 0.3   # 0.0 = strongest ramps, 1.0 = no ramps
+        s_norm = (1 - ramp_strength) * s_norm + ramp_strength * u
 
-         # create a JointTrajectory instance and asign values
+        speed_factor = 1.  # halve speed
+        s = s_norm * total_length * speed_factor
+        # ------------------------------------------------------------------
+        # 5) Interpolate joint positions at these arc-lengths
+        # ------------------------------------------------------------------
+        # For each joint, do 1D interpolation: cumulative_length_valid -> path_valid[:, j]
+        joint_positions = np.zeros((num_samples, n_joints), dtype=float)
+        for j in range(n_joints):
+            joint_positions[:, j] = np.interp(
+                s,
+                cumulative_length_valid,
+                path_valid[:, j],
+            )
+
+        # ------------------------------------------------------------------
+        # 6) Build JointTrajectory message
+        # ------------------------------------------------------------------
         traj_msg = JointTrajectory()
+        # Using your original way of getting joint names
         joint_names = [key for key, _ in home_joint_config.items()]
         traj_msg.joint_names = joint_names
 
-        # Add waypoints and time_from_start to the JointTrajectory message
-        for i, (waypoint, time) in enumerate(zip(waypoints, time_from_start)):
+        for q, ti in zip(joint_positions, t):
             point = JointTrajectoryPoint()
-            point.positions = waypoint.tolist()  # Convert NumPy array to a list
-            point.time_from_start = rospy.Duration(time)  # Convert time to ROS Duration
+            point.positions = q.tolist()
+            point.time_from_start = rospy.Duration(float(ti))
+            # velocities/accelerations can be left empty – controller will estimate
             traj_msg.points.append(point)
 
-
         return traj_msg
+
+    # def get_ros_joint_trajectory_from_plan(\
+    #     self, 
+    #     plan:MotionPlan=None, 
+    #     target_time:float = 3.0, 
+    #     joint_update_rate:int=100,
+    #     path = None
+    # ) -> JointTrajectory:
+    #     """  
+    #     Generates a ROS JointTrajectory message from a motion plan.
+
+    #     Parameters:
+    #         plan (MotionPlan): The motion plan containing the path to be converted into a JointTrajectory.
+    #         target_time (float): The desired time to complete the trajectory, in seconds. If this value is 
+    #                             less than the minimum required time based on velocity limits, it will be adjusted.
+    #         joint_update_rate (int): The rate at which joint positions are updated, in Hz.
+
+    #     Returns:
+    #         JointTrajectory: A ROS JointTrajectory message containing the waypoints and timing information.
+    #                         Returns None if the plan is invalid or not provided.
+    #     """
+    #     # validate the path
+    #     if plan is None and path is None:
+    #         self.__logwarn("Plan is None. Failed to create JointTrajectory!")
+    #         return None
+        
+    #     # get the path from the plan (optimal path)
+    #     if path is None:
+    #         path = plan.getPath()
+        
+    #     # filter only joint values of the path and make it a numpy array
+    #     path = np.array(self.filter_path(path))
+
+    #     # get joint velocity limits
+    #     joint_vel_limits = self.get_robot_drivers_velocity_limits()
+    #     joint_vel_upper_limits = np.array([limit[1] for limit in joint_vel_limits ])
+
+    #     # calculate distances and max times for each milestone transition
+    #     milestone_distance = np.abs(np.diff(path, axis=0))
+    #     max_time_needed_for_milestone = np.max(milestone_distance / joint_vel_upper_limits, axis=1) 
+    #     # add 2.0s of threshold to max_time_needed_for_milestone to slow down if speed is super fast!
+    #     max_time_needed_for_milestone += 5.0
+
+    #     # Total time needed for full transition
+    #     total_time_needed = np.sum(max_time_needed_for_milestone)   # add a threshold of 2.0 seconds 
+
+    #     # Adjust target time if need
+    #     if target_time < total_time_needed :
+    #         warn = f"target_time {target_time:.4f}s is not sufficient to reach the goal. Minimum required time is {total_time_needed:.4f}s."
+    #         self.__logwarn(warn)
+    #         info = f"Setting target_time to {total_time_needed:.4f}s"
+    #         self.__loginfo(info)
+    #         target_time = total_time_needed
+
+    #     # compute target times for each milestone
+    #     target_time_for_milestone = np.round(target_time * max_time_needed_for_milestone / total_time_needed, 2)
+
+    #     # create waypoints
+    #     waypoints = []
+    #     for i, (start, end, time_needed) in enumerate(zip(path[:-1], path[1:], target_time_for_milestone)):
+    #         # num_waypoints = int(time_needed * joint_update_rate)
+    #         # # interpolate waypoints
+    #         # segment_waypoints = np.linspace(start, end, num=num_waypoints, endpoint=True)
+    #         # waypoints.append(segment_waypoints)
+        
+    #         num_waypoints = int(joint_update_rate * (target_time / (len(path)-1)))
+    #         segment_waypoints = np.linspace(start, end, num=num_waypoints)
+    #         waypoints.append(segment_waypoints)
+
+    #     # Flatten the list of waypoints
+    #     waypoints = np.round(np.vstack(waypoints), 8)
+
+
+    #     # generate warped timestamps for smooth speed profile
+    #     # t_uniform = np.linspace(0, target_time, len(waypoints))
+    #     # u = t_uniform / target_time
+    #     # s = self.smooth_s_curve(u)
+    #     # time_from_start = np.round(s * target_time, 4)
+
+    #     # Uniform u in [0,1]
+    #     #u = np.linspace(0, 1, len(waypoints))
+    #     #s = 1.0 - self.smooth_s_curve(1.0 - u)
+    #     #time_from_start = np.round(s * target_time, 4)
+
+
+    #     # u = np.linspace(0, 1, len(waypoints))
+    #     # s = self.smooth_s_curve(u)
+    #     # time_from_start = s * target_time
+    #     # generate time stamps
+    #     # time_from_start = np.round(np.linspace(0, target_time, len(waypoints)), 4)
+
+
+    #      # create a JointTrajectory instance and asign values
+    #     traj_msg = JointTrajectory()
+    #     joint_names = [key for key, _ in home_joint_config.items()]
+    #     traj_msg.joint_names = joint_names
+
+    #     # Add waypoints and time_from_start to the JointTrajectory message
+    #     for i, (waypoint, time) in enumerate(zip(waypoints, time_from_start)):
+    #         point = JointTrajectoryPoint()
+    #         point.positions = waypoint.tolist()  # Convert NumPy array to a list
+    #         point.time_from_start = rospy.Duration(time)  # Convert time to ROS Duration
+    #         traj_msg.points.append(point)
+
+
+    #     return traj_msg
     
 
     

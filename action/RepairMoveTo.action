@@ -5,6 +5,7 @@ geometry_msgs/Pose target_pose_left  # Grasp target pose
 geometry_msgs/Pose target_pose_right # Release target pose
 float32[] joint_values
 std_msgs/Float32MultiArray path
+bool single_step_execution
 
 ---
 # Result definition
