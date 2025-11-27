@@ -306,7 +306,7 @@ class RepairMotionControlServer:
         self._planner.planner_robot.setConfig(start_config)
 
         # get the joint trajectory
-        traj_msg = self._planner.get_ros_joint_trajectory_from_plan(target_time=3, joint_update_rate=100, path=path, real_robot_current_config=self.current_joint_states)
+        traj_msg = self._planner.get_ros_joint_trajectory_from_plan(target_time=3, joint_update_rate=100, path=path)
 
         
         if traj_msg is None:
